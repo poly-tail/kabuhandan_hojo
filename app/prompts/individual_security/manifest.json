@@ -1,10 +1,10 @@
 {
-  "prompt_version": "2026.08.16",
+  "prompt_version": "2026.08.17",
   "prompt_profile_id": "individual_security_comprehensive",
   "compiler_version": "individual-security-v1",
   "source": {
-    "title": "株判断プロジェクト｜定型プロンプト集 v2026.08.16",
-    "sha256": "6EDAE7A223A9D6C5CF0FC5E544B71501ADA6CFEAF51CFD33A506C39DE4962021"
+    "title": "株判断プロジェクト｜定型プロンプト集 v2026.08.17",
+    "sha256": "09C7412D2C8FF81BB5F3BDF2EC07C1DC7E251EBA370A0CA994C0D7E2642FFFC1"
   },
   "compile_order": [
     "common_os",
@@ -14,26 +14,26 @@
   ],
   "assets": {
     "common_os": {
-      "asset_id": "common_os@2026.08.16",
-      "path": "assets/v2026_08_16/common_os.md",
+      "asset_id": "common_os@2026.08.17",
+      "path": "assets/v2026_08_17/common_os.md",
       "source_section": "1. 株判断共通OS",
-      "sha256": "74F81A7CD31E49BE0D4692A953973B7E8FE43838CB4ED97DB288A2FE118BF135"
+      "sha256": "EE28BC9B2570FE31ADBBBE4C1D7EEEA9DFF2BD558F16FA9CE9B19044671D4844"
     },
     "common_input_rules": {
-      "asset_id": "common_input_rules@2026.08.16-mvp1",
-      "path": "assets/v2026_08_16/common_input_rules.md",
+      "asset_id": "common_input_rules@2026.08.17-mvp1",
+      "path": "assets/v2026_08_17/common_input_rules.md",
       "source_section": "2. 共通入力テンプレート（個別銘柄MVPで必要な部分）",
-      "sha256": "366DE41D845D6156F8A0089D191A4D470B20588631BCA4F8AFFB9DEB5BFA6A86"
+      "sha256": "1AF66FE9D3F8A7A66B8BACEFEEF26C0A91E4B791FC8461199F586044E7096EFE"
     },
     "execution_constraints": {
       "asset_id": "execution_constraints_no_tools@mvp1",
-      "path": "assets/v2026_08_16/execution_constraints_no_tools.md",
+      "path": "assets/v2026_08_17/execution_constraints_no_tools.md",
       "source_section": "アプリ実行制約（Web・外部市場データなし）",
       "sha256": "5BE86DFC3DFE350EBAFAE5C4A20742CFDE43D6FC96D1F9DCFB46EAD324F9C843"
     },
     "task_module": {
-      "asset_id": "individual_comprehensive@2026.08.16",
-      "path": "assets/v2026_08_16/modules/individual_comprehensive.md",
+      "asset_id": "individual_comprehensive@2026.08.17",
+      "path": "assets/v2026_08_17/modules/individual_comprehensive.md",
       "source_section": "3.1 総合的な個別銘柄分析",
       "sha256": "E83E1C19238C92DD99FD7781A8317AF1ADC6D33743D6C8FCED135E4ABB4E4DB5"
     }

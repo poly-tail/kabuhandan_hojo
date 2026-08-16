@@ -8,7 +8,9 @@
 4. `input` -> 銘柄context（未提供データを`【U】`で明示） -> JSON化した自由質問
 5. `PromptTrace` -> version / profile / compiler / module / asset IDs / source hash / compiled hashをOpenAI metadataへ変換（本文・質問なし）
 6. `OpenAIResponsesClient` -> 従来どおり `gpt-5.6-terra` / `medium` / `medium` でResponses APIを1回呼び出し、`response.output_text`を検証
-7. `answer_text` -> 既存FastAPI response -> browser `textContent` / `white-space: pre-wrap`
+7. verified `answer_text` -> `AiAnalysisRecordRepository` -> `ai_analysis_record`へtransaction保存（prompt本文・APIキーなし）
+8. 保存成功 -> FastAPI response -> browser `textContent` / `white-space: pre-wrap`。送信中は銘柄検索・選択と質問編集をロックし、validation errorを含むcanonical API responseはmiddlewareで`no-store`
+9. browserの大画面リンク -> `GET /ui/analysis/results/{request_id}` -> `GET /api/ai/analyses/{request_id}` -> 保存済み本文を再表示
 
 この経路には3.2〜3.14、Web tool、Structured Outputs、JSON parse/repair、再呼び出し、fallbackを接続しません。旧portfolio AI call graphも変更しません。
 
@@ -20,8 +22,10 @@
 4. `AiAnalysisService` -> `security_master` から銘柄snapshotを解決 -> `IndividualSecurityPromptCompiler`でpromptを合成
 5. `OpenAIResponsesClient` -> `gpt-5.6-terra` / `reasoning.effort=medium` / `text.verbosity=medium` で Responses APIを1回呼び出す
 6. `response.status=completed`、response ID、非空の `response.output_text` を検証 -> APIの `answer_text`
-7. UI -> `answer_text` を `textContent` でプレーンテキスト表示
-8. OpenAI失敗、timeout、空回答 -> 分類済みerror response -> UIのerror領域（mockやraw-response fallbackなし）
+7. 成功回答、質問、銘柄snapshot、生成設定、prompt traceを `ai_analysis_record` に保存。commit失敗はrollbackして `PERSISTENCE_ERROR`
+8. 保存成功した回答だけをUIの `textContent` で表示し、保存済み表示と別ウィンドウリンクを有効化
+9. reader -> UUID詳細GET -> 保存済み質問・回答を `textContent` / `white-space: pre-wrap` で再表示
+10. OpenAI失敗、timeout、空回答、保存失敗 -> 分類済みerror response -> UIのerror領域（mockやraw-response fallbackなし）
 
 ## 2026-06-15 multi-mode stock AI review addendum
 

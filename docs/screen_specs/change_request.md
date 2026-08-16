@@ -14,6 +14,8 @@
 - `/ui/dashboard/data`
 - `/securities/search`
 - `/api/ai/analyses`
+- `/api/ai/analyses/{request_id}`
+- `/ui/analysis/results/{request_id}`
 - search / watchlist / monitoring API
 
 3. live mode と mock mode で挙動差があるか
@@ -25,6 +27,8 @@
 - legacy Portfolio AI分析 (`/api/ai/stock-review`)
 
 6. prompt version / module、Web、Structured Outputs、mock、fallback の境界が変わるか
+
+7. 保存済み質問・回答の認証、保持、削除、URL露出、`no-store`境界が変わるか
 
 ## 更新時に一緒に見る文書
 

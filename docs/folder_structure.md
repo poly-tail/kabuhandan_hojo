@@ -3,29 +3,31 @@
 ## 2026-08-17 specification docs addendum
 
 - `docs/spec_change_history.md`: 要件・API・画面仕様の版対応、変更理由、互換性、既知制約の横断履歴。
-- `docs/requirements/requirements_v1.2.md`: 個別銘柄AI最小縦スライスを含む要件正本。
-- `docs/specs/api_spec_v1.5.md`: canonical個別銘柄AI endpointを含むAPI正本。
-- `docs/screen_specs/screen_spec_v1.7.md`: 独立AI分析画面を含む画面正本。
+- `docs/requirements/requirements_v1.3.md`: canonical回答保存を含む要件正本。
+- `docs/specs/api_spec_v1.6.md`: 保存詳細APIを含むAPI正本。
+- `docs/screen_specs/screen_spec_v1.8.md`: 独立AI分析画面と大画面readerを含む画面正本。
 
 ## 2026-08-17 individual-security PromptCompiler addendum
 
 - `app/prompts/individual_security/compiler.py`: 共通asset、銘柄context、質問を合成する独立Compiler。
 - `app/prompts/individual_security/manifest.json`: prompt/source/compiler version、asset、3.1 module、hash、合成順。
-- `app/prompts/individual_security/assets/v2026_08_16/`: 共通OS、共通入力ルール、実行制約、`modules/individual_comprehensive.md`。
+- `app/prompts/individual_security/assets/v2026_08_17/`: 現行の共通OS、銘柄名・コード分離入力、実行制約、`modules/individual_comprehensive.md`。v2026.08.16も再現用に保持。
 - `tests/unit/test_individual_security_prompt_compiler.py`: asset読込、3.1選択、3.2〜3.14除外、context・質問・traceのテスト。
-- `tests/fixtures/ai_analysis/individual_security_questions_v2026_08_16.json`: 人手before/after比較用の代表質問10件。
+- `tests/fixtures/ai_analysis/individual_security_questions_v2026_08_17.json`: 現行promptの人手比較用代表質問10件。
 - `.md` / `.json` assetは`pyproject.toml`のpackage-dataへ明示し、wheelでも同梱します。
 
 ## 2026-08-17 AI最小縦スライス addendum
 
 - `app/ai/`: 固定モデル、`STANDARD` preset、公開エラーコード。モデル選択と回答品質presetは分離。
 - `app/integrations/openai_responses.py`: OpenAI Responses APIだけを扱う独立client。
-- `app/schemas/ai_analysis.py`: 最小AI分析request / response schema。
-- `app/services/ai_analysis.py`: 個別銘柄解決と最小prompt合成。
-- `app/api/routes/ai_analysis.py`: canonical endpoint `POST /api/ai/analyses`。
-- `app/api/routes/analysis_ui.py`: 独立した最小画面 `GET /ui/analysis`。
+- `app/schemas/ai_analysis.py`: AI分析POST、browser-safe保存詳細、typed error schema。
+- `app/models/ai_analysis_record.py`: 成功回答・生成設定・prompt traceのローカルDB record。
+- `app/services/ai_analysis.py`: 個別銘柄解決、prompt合成、OpenAI呼び出し、成功回答保存の調停。
+- `app/services/ai_analysis_records.py`: 保存transaction、rollback、UUID詳細取得。
+- `app/api/routes/ai_analysis.py`: `POST /api/ai/analyses` と `GET /api/ai/analyses/{request_id}`。
+- `app/api/routes/analysis_ui.py`: `GET /ui/analysis` と大画面 `GET /ui/analysis/results/{request_id}`。
 - `scripts/smoke_openai_response.py`: FastAPIを介さない実OpenAI疎通確認。
-- `tests/unit/test_openai_responses_client.py`、`test_ai_analysis_api.py`、`test_analysis_ui.py`: client、API、UI shellの回帰テスト。
+- `tests/unit/test_openai_responses_client.py`、`test_ai_analysis_records.py`、`test_ai_analysis_api.py`、`test_analysis_ui.py`: client、保存transaction、API、UI shellの回帰テスト。
 
 ## 2026-06-15 multi-mode stock AI review addendum
 

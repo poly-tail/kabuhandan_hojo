@@ -1,6 +1,6 @@
 # Screen Spec Current
 
-> 現在の正本: `screen_spec_v1.7.md`
+> 現在の正本: `screen_spec_v1.8.md`
 
 ## 概要
 
@@ -9,18 +9,21 @@
 
 ## 現在値
 
-- 画面仕様書: v1.7
+- 画面仕様書: v1.8
 - 更新日: 2026-08-17
-- 変更概要: 独立した個別銘柄AI分析画面とserver-side定型prompt適用境界の追加
+- 変更概要: AI回答の保存済み表示、別ウィンドウ大型reader、prompt v2026.08.17の銘柄名・コード表記を追加
 
 ## 主な変更点
 
-- UI 4画面構成と独立URL `GET /ui/analysis`
+- UI 5画面構成と独立URL `GET /ui/analysis`
 - chart detail 強化
 - live mode の no-mock 表示
 - market proxy ベースの地合い表示
 - 登録済み個別銘柄1件、自由質問、固定 `STANDARD`
-- 銘柄検索、loading、safe error、plain-text answer、request診断表示
+- 銘柄検索、loading、送信中の入力ロック、safe error、plain-text answer、request診断表示
+- 成功時だけ表示する保存済み状態と `別ウィンドウで大きく表示` link
+- `/ui/analysis/results/{request_id}` の最大幅1380px・plain-text readerとloading / error
+- `target="_blank"` / `rel="noopener noreferrer"`、URLはUUIDだけ、responseは`no-store`
 - 新画面ではmock / Web検索 / Structured Outputs / raw response fallbackを使わない
 - prompt asset / version / APIキーをbrowserへ出さない
 - dashboard legacy Portfolio AI画面との責務分離

@@ -22,6 +22,11 @@
 - `answer_text` は `textContent` と `white-space: pre-wrap` でプレーンテキスト表示する
 - APIキー、prompt全文、質問全文、stack traceを画面や診断情報へ表示しない
 - 未提供の市場・価格・決算・需給情報を取得済みのように見せない
+- POST成功はローカルDB保存完了を含み、保存失敗を成功表示しない
+- AI送信中は銘柄検索・選択と質問編集をロックし、応答待ちの銘柄と表示対象を入れ替えない
+- 成功時だけ保存済み表示と `target="_blank"` / `rel="noopener noreferrer"` の大画面リンクを有効にする
+- 大画面readerも質問・回答を `textContent` / `white-space: pre-wrap` で描画し、取得失敗時に本文を表示しない
+- 保存済み回答URLにはUUID `request_id`だけを含め、回答本文や秘密情報を含めない
 
 ## source policy
 

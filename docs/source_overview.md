@@ -2,14 +2,14 @@
 
 ## 2026-08-17 specification baseline addendum
 
-- `docs/requirements/requirements_v1.2.md`、`docs/specs/api_spec_v1.5.md`、`docs/screen_specs/screen_spec_v1.7.md` を、個別銘柄AI最小縦スライスとversioned PromptCompilerを含む現行仕様の正本とします。
+- `docs/requirements/requirements_v1.3.md`、`docs/specs/api_spec_v1.6.md`、`docs/screen_specs/screen_spec_v1.8.md` を、個別銘柄AI回答保存、大画面reader、versioned PromptCompilerを含む現行仕様の正本とします。
 - `docs/spec_change_history.md` は要件・API・画面仕様の版対応、変更理由、互換性、既知制約を横断して追跡します。実装変更の時系列は引き続き `docs/changelog.md` を正本とします。
 - `current.md` は最新版へのpointerと短い概要に限定し、完全な契約はversioned fileへ保持します。
 
 ## 2026-08-17 individual-security PromptCompiler addendum
 
-- `app/prompts/individual_security/manifest.json` はprompt version `2026.08.16`、source hash、4つのasset ID/hash、選択module `3.1`、compile orderを正本化します。
-- `assets/v2026_08_16/common_os.md` は添付第1章本文をそのまま保持し、`modules/individual_comprehensive.md` は「3.1 総合的な個別銘柄分析」だけを保持します。共通入力の必要部分とWeb・外部市場データなしの制約は別assetです。
+- `app/prompts/individual_security/manifest.json` はprompt version `2026.08.17`、source hash、4つのasset ID/hash、選択module `3.1`、compile orderを正本化します。
+- `assets/v2026_08_17/common_os.md` は添付第1章本文を保持し、「銘柄名（銘柄コード）」の併記規則を含みます。`modules/individual_comprehensive.md` は「3.1 総合的な個別銘柄分析」だけを保持し、共通入力では銘柄名とコードを分離します。旧v2026.08.16 assetは再現用に残します。
 - `IndividualSecurityPromptCompiler` は共通OS -> 共通入力ルール -> 実行制約 -> 3.1 -> `security_master` context -> 自由質問の順に合成します。3.2〜3.14、アプリ向けJSON Schema、人間向け重複templateは読み込みません。
 - `app/services/ai_analysis.py` はcompiler出力を既存clientへ渡します。OpenAI `instructions`には静的規則、`input`には実行時context、`metadata`にはversion・asset・module・hashだけを入れ、公開FastAPI responseにはprompt情報を追加しません。
 - 旧 `app/prompts/stock_analysis/` とportfolio AI経路は変更していません。新経路もWeb検索、Structured Outputs、cache、fallbackを使用しません。
@@ -19,8 +19,12 @@
 - `app/ai/` は固定モデル、`STANDARD` の回答品質設定、公開エラーコードを管理します。モデル選択はpreset定義へ含めません。
 - `app/integrations/openai_responses.py` は Responses APIを1回だけ呼び、timeout、`response.status`、response ID、非空の `response.output_text` を検証します。SDK例外は安全な分類へ変換し、raw例外本文をブラウザへ返しません。
 - `app/services/ai_analysis.py` は登録済み銘柄1件を解決し、最小promptを組み立てます。`app/api/routes/ai_analysis.py` の `POST /api/ai/analyses` がcanonical routeです。
-- `app/api/routes/analysis_ui.py` は既存の巨大UIから独立した最小画面を返します。回答は `textContent` と `white-space: pre-wrap` で描画します。
+- `app/api/routes/analysis_ui.py` は既存の巨大UIから独立した最小画面を返します。回答は `textContent` と `white-space: pre-wrap` で描画し、AI送信中は銘柄検索・選択と質問編集をロックします。
+- `app/main.py` のcanonical AI middlewareは、route handler前のFastAPI validation errorを含む `/api/ai/analyses` 配下の全responseへ `Cache-Control: no-store` を付与します。
 - `scripts/smoke_openai_response.py` はFastAPIやブラウザを介さず実OpenAI APIを確認します。この縦スライスにはmock、cache、fallback、Web検索、Structured Outputs、streamingを接続しません。
+- `app/models/ai_analysis_record.py` はcanonical成功回答、銘柄snapshot、生成設定、prompt provenanceをローカルDBへ保存します。APIキー、prompt全文、provider raw response / errorは列に持ちません。
+- `app/services/ai_analysis_records.py` は保存transactionとUUID詳細取得を分離します。commit失敗はrollbackして `PERSISTENCE_ERROR` とし、旧JSON履歴へfallbackしません。
+- `GET /api/ai/analyses/{request_id}` が保存済み回答1件を返し、`GET /ui/analysis/results/{request_id}` が大画面readerを返します。どちらも `Cache-Control: no-store` です。
 
 ## 2026-06-25 long-term non-monitoring carry risk addendum
 
@@ -75,13 +79,15 @@ HTTP の入口は `app/` にあり、source 固有の処理、特徴量計算、
 
 | path | 役割 |
 |---|---|
-| `app/main.py` | FastAPI app の起動点 |
+| `app/main.py` | FastAPI app の起動点とcanonical AI responseの`no-store` middleware |
 | `app/ai/` | 最小AI縦スライスの固定モデル、回答preset、エラーコード |
 | `app/prompts/individual_security/` | 個別銘柄MVPのversioned prompt assets / manifest / compiler |
-| `app/api/routes/ai_analysis.py` | `POST /api/ai/analyses` のcanonical route |
-| `app/api/routes/analysis_ui.py` | `GET /ui/analysis` の独立HTML shell |
+| `app/api/routes/ai_analysis.py` | canonical分析POSTと保存済み回答UUID詳細GET |
+| `app/api/routes/analysis_ui.py` | `GET /ui/analysis` と保存済み回答の大画面reader |
 | `app/integrations/openai_responses.py` | Responses APIの最小clientと例外分類 |
 | `app/services/ai_analysis.py` | 銘柄解決、PromptCompiler呼び出し、Responses client連携 |
+| `app/services/ai_analysis_records.py` | canonical成功回答のtransaction保存とUUID詳細取得 |
+| `app/models/ai_analysis_record.py` | 保存済みcanonical AI回答とprompt provenanceのORM |
 | `app/api/routes/health.py` | health endpoint |
 | `app/api/routes/watchlist.py` | watchlist と `/securities/search` |
 | `app/api/routes/monitoring.py` | monitoring 系 API |

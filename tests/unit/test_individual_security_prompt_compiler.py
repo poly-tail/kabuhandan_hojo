@@ -14,7 +14,7 @@ FIXTURE_PATH = (
     Path(__file__).resolve().parents[1]
     / "fixtures"
     / "ai_analysis"
-    / "individual_security_questions_v2026_08_16.json"
+    / "individual_security_questions_v2026_08_17.json"
 )
 
 
@@ -42,6 +42,8 @@ def test_compiler_loads_common_os_and_exact_task_module() -> None:
     assert "## 1. 最上位原則" in compiled.instructions
     assert "## 5. 株価反応の5層モデル" in compiled.instructions
     assert "根拠不足なら無理に売買結論を出さず、insufficient_data または no_trade" in compiled.instructions
+    assert "銘柄名（銘柄コード）" in compiled.instructions
+    assert "2. 対象銘柄：銘柄名（銘柄コード）" in compiled.instructions
     assert "共通OSに従い、この銘柄を総合分析してください。" in compiled.instructions
     assert "主因、補正項、反証条件、撤退条件、再参入条件を明示してください。" in compiled.instructions
 
@@ -52,6 +54,7 @@ def test_compiler_includes_security_context_and_user_question() -> None:
 
     assert '"security_code": "7203"' in compiled.input_text
     assert '"name": "トヨタ自動車"' in compiled.input_text
+    assert "銘柄名と銘柄コードを別フィールドとして扱い" in compiled.instructions
     assert '"market": "東証プライム"' in compiled.input_text
     assert '"industry_33": "輸送用機器"' in compiled.input_text
     assert '"listed_date": "1949-05-16"' in compiled.input_text
@@ -76,6 +79,7 @@ def test_compiler_includes_security_context_and_user_question() -> None:
         "このトレードを結果論ではなくプロセスで監査してください",
         "結論に影響する項目だけを3分版で確認してください",
         "回答本文の後に、必ず次のJSONを1つだけ出力してください",
+        '"company_name"',
     ],
 )
 def test_compiler_does_not_include_unselected_modules_or_json_schema(excluded_marker: str) -> None:
@@ -90,16 +94,20 @@ def test_compiler_exposes_version_assets_module_and_stable_hash() -> None:
     second = _compile()
     changed = _compile("別の質問です。")
 
-    assert first.trace.prompt_version == "2026.08.16"
+    assert first.trace.prompt_version == "2026.08.17"
     assert first.trace.prompt_profile_id == "individual_security_comprehensive"
     assert first.trace.compiler_version == "individual-security-v1"
     assert first.trace.module_id == "3.1"
     assert first.trace.module_name == "総合的な個別銘柄分析"
+    assert (
+        first.trace.source_sha256
+        == "09C7412D2C8FF81BB5F3BDF2EC07C1DC7E251EBA370A0CA994C0D7E2642FFFC1"
+    )
     assert first.trace.asset_ids == (
-        "common_os@2026.08.16",
-        "common_input_rules@2026.08.16-mvp1",
+        "common_os@2026.08.17",
+        "common_input_rules@2026.08.17-mvp1",
         "execution_constraints_no_tools@mvp1",
-        "individual_comprehensive@2026.08.16",
+        "individual_comprehensive@2026.08.17",
     )
     assert len(first.trace.compiled_prompt_sha256) == 64
     assert first.trace.compiled_prompt_sha256 == second.trace.compiled_prompt_sha256
@@ -112,9 +120,9 @@ def test_trace_metadata_contains_no_prompt_or_question_text() -> None:
     metadata = compiled.trace.as_openai_metadata()
     serialized = json.dumps(metadata, ensure_ascii=False)
 
-    assert metadata["prompt_version"] == "2026.08.16"
+    assert metadata["prompt_version"] == "2026.08.17"
     assert metadata["prompt_module"] == "3.1"
-    assert "common_os@2026.08.16" in metadata["prompt_assets"]
+    assert "common_os@2026.08.17" in metadata["prompt_assets"]
     assert question not in serialized
     assert "あなたは、企業の良し悪しを解説するだけのAIではない" not in serialized
 
@@ -146,7 +154,7 @@ def test_evaluation_fixture_covers_all_requested_perspectives() -> None:
     cases = fixture["cases"]
     coverage = {tag for case in cases for tag in case["coverage"]}
 
-    assert fixture["prompt_version"] == "2026.08.16"
+    assert fixture["prompt_version"] == "2026.08.17"
     assert 5 <= len(cases) <= 10
     assert len({case["id"] for case in cases}) == len(cases)
     assert {

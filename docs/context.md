@@ -5,6 +5,10 @@
 - 独立画面 `/ui/analysis` と canonical API `POST /api/ai/analyses` は、登録済み個別銘柄1件、自由質問、固定 `STANDARD`、OpenAI Responses API、プレーンテキスト回答だけを扱います。
 - この経路は dashboard の旧Portfolio AI分析とは独立しています。mock、cache、fallback、Web検索、Structured Outputs、JSON修復、streaming は使用せず、OpenAI失敗や空回答を成功へ変換しません。
 - 個別銘柄用promptは `app/prompts/individual_security/` のversioned assetsとmanifestを正本とし、共通OS、共通入力ルール、Web・外部市場データなし制約、用途module 3.1、銘柄context、自由質問をserver側で合成します。
+- source v2026.08.17の「銘柄名（銘柄コード）」併記規則を使い、銘柄名とコードを分離してcontextへ入れます。3.2〜3.14やJSON Schemaは組み込みません。
+- completedかつ非空の成功回答は `ai_analysis_record` へ自動保存し、同じ `request_id` で再取得できます。保存失敗はrollbackして成功扱いにしません。
+- `/ui/analysis/results/{request_id}` は保存済み回答を幅広い別ウィンドウで再表示します。質問と回答はローカルDBへ保存しますが、APIキー、prompt全文、provider raw response / errorは保存しません。
+- AI送信中は銘柄検索・選択と質問編集をロックし、応答待ちの間に表示対象が変わらないようにします。canonical APIはvalidation errorを含む全responseを`no-store`にします。
 - 現在渡せる銘柄情報は主に `security_master` のcode、name、market、industry、listed dateです。価格、決算、テクニカル、需給、市場、マクロ、イベントは未提供として区別します。
 - 現行endpointにはアプリ独自の認証とrate limitがないため、trusted local環境向けです。Internetへ直接公開する前にhardeningが必要です。
 
@@ -41,6 +45,10 @@
   - 登録済み個別銘柄1件の検索・選択
   - 自由質問と固定 `STANDARD`
   - loading / error / プレーンテキスト回答
+  - 成功時の保存済み表示と別ウィンドウreaderへのリンク
+- `/ui/analysis/results/{request_id}`
+  - 保存済みの銘柄、質問、回答、生成日時を大画面で再表示
+  - `textContent` / `white-space: pre-wrap` のプレーンテキスト描画
 - `/ui/dashboard`
   - 地合い overview
   - 優先度の高い監視銘柄
@@ -83,7 +91,8 @@
 ## いまの積み残し
 
 - `/api/ai/analyses` の認証、アプリ側rate limit、公開host/TLS方針
-- prompt構成異常のtyped API errorと、prompt traceの永続audit保存
+- prompt構成異常のtyped API error
+- 保存済みAI回答の認証・利用者分離・暗号化・保持期限・削除・一覧導線
 - review 画面の正本仕様はまだ別文書に切り出していない
 - portfolio 更新フローは watchlist 中心で、CSV import は未実装
 - TDnet は参照導線までで、自動 connector は未実装

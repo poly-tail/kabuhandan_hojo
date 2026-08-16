@@ -1,18 +1,27 @@
 # kabuhandan_hojo Phase 0-2
 
+## 2026-08-17 AI回答保存・大画面表示・prompt更新
+
+- canonical `POST /api/ai/analyses` の成功回答をSQLite / PostgreSQLの `ai_analysis_record` に自動保存します。POSTのHTTP 200は保存完了を含み、保存できない場合はrollbackして `PERSISTENCE_ERROR` を返します。
+- 保存済み回答は `GET /api/ai/analyses/{request_id}` で再取得できます。分析画面の成功後に「別ウィンドウで大きく表示」が現れ、`GET /ui/analysis/results/{request_id}` の幅広いプレーンテキストreaderを開きます。
+- AI送信中は銘柄検索・銘柄選択・質問編集をロックし、送信対象と表示先が途中で入れ替わる競合を防ぎます。canonical APIはFastAPIの入力検証エラーを含む全responseへ`Cache-Control: no-store`を付与します。
+- 保存するのは質問、回答、銘柄snapshot、生成設定、OpenAI response ID、prompt provenanceです。APIキー、prompt全文、providerのraw response / errorは保存しません。
+- 添付prompt sourceを v2026.08.17へ更新し、「銘柄名（銘柄コード）」の併記と、銘柄名・コードの分離入力を反映しました。共通OS、必要な共通入力、no-tools制約、module 3.1だけを使い、3.2〜3.14やJSON Schemaは送りません。
+- 保存済み回答APIには認証・利用者分離・削除・保持期限がまだありません。ローカルDBはGit管理外ですが、現状はtrusted local環境だけで利用してください。
+
 ## 2026-08-17 仕様baseline更新
 
-- 現行正本を要件 v1.2、API v1.5、画面 v1.7へ更新し、個別銘柄AI最小縦スライス、定型prompt、legacy Portfolio AIとの境界を反映しました。
+- 現行正本を要件 v1.3、API v1.6、画面 v1.8へ更新し、個別銘柄AI回答の永続保存、大画面reader、prompt v2026.08.17、legacy Portfolio AIとの境界を反映しました。
 - 仕様版の対応、変更理由、互換性、非対象、既知制約は `docs/spec_change_history.md` で追跡します。
 - 旧versioned文書と旧AI endpointは履歴・互換機能として保持し、今回の文書更新ではコードを変更していません。
 
 ## 2026-08-17 定型prompt最小統合
 
-- `POST /api/ai/analyses` の既存縦スライスへ、添付 `株判断プロジェクト｜定型プロンプト集 v2026.08.16` の「1. 株判断共通OS」と「3.1 総合的な個別銘柄分析」だけを統合しました。3.2〜3.14は送信しません。
+- `POST /api/ai/analyses` の既存縦スライスへ、添付 `株判断プロジェクト｜定型プロンプト集 v2026.08.17` の「1. 株判断共通OS」と「3.1 総合的な個別銘柄分析」だけを統合しました。3.2〜3.14は送信しません。
 - `app/prompts/individual_security/` がversioned Markdown asset、manifest、`IndividualSecurityPromptCompiler`を管理します。合成順は共通OS、共通入力ルール、Web・外部市場データなしの実行制約、3.1用途module、銘柄context、自由質問です。
 - OpenAI requestの`instructions`へ共通規則と3.1、`input`へ銘柄contextと質問を渡します。prompt version、使用asset、module ID、compiled SHA-256はOpenAI response metadataへ記録し、prompt全文・質問はmetadata、公開API response、browserへ出しません。
 - 固定model `gpt-5.6-terra`、`STANDARD`、`reasoning.effort=medium`、`text.verbosity=medium`、`response.output_text`方式を維持します。Web検索、Structured Outputs、JSON修復、fallbackは追加していません。
-- 比較用の代表質問10件は `tests/fixtures/ai_analysis/individual_security_questions_v2026_08_16.json` にあります。
+- 比較用の代表質問10件は `tests/fixtures/ai_analysis/individual_security_questions_v2026_08_17.json` にあります。
 
 ## 2026-08-17 AI最小縦スライス
 
@@ -176,7 +185,9 @@ python scripts/run_api.py --reload --mock
 
 - `GET /health`
 - `POST /api/ai/analyses`
-  - 個別銘柄1件の最小AI分析入口です。現在は `preset=STANDARD` のみ受け付けます。
+  - 個別銘柄1件の最小AI分析入口です。現在は `preset=STANDARD` のみ受け付け、成功回答をローカルDBへ自動保存します。
+- `GET /api/ai/analyses/{request_id}`
+  - canonical経路で保存した回答1件をUUIDで再取得します。回答一覧は提供しません。
 - `GET /watchlist`
 - `POST /watchlist`
 - `GET /portfolio`
@@ -224,6 +235,8 @@ python scripts/run_api.py --reload --mock
 ### UI
 
 - `GET /ui/analysis`
+- `GET /ui/analysis/results/{request_id}`
+  - 保存済み回答を別ウィンドウで読む大画面プレーンテキストreaderです。
 - `GET /ui/dashboard`
 - `GET /ui/dashboard/data`
 - `GET /ui/review`

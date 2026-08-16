@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Protocol
 
 from sqlalchemy.orm import Session
 
 from app.ai.presets import AnswerPreset, get_answer_preset
+from app.ai.runtime import AI_ANALYSIS_MODEL
 from app.core.config import get_settings
 from app.integrations.openai_responses import OpenAIResponsesClient, OpenAITextResponse
 from app.models.security import SecurityMaster
@@ -17,6 +19,7 @@ from app.prompts.individual_security import (
     SecurityPromptContext,
 )
 from app.schemas.ai_analysis import AiAnalysisRequest, AiSecuritySnapshot
+from app.services.ai_analysis_records import AiAnalysisRecordInput, AiAnalysisRecordRepository
 
 
 class OpenAITextClient(Protocol):
@@ -42,6 +45,7 @@ class AiAnalysisServiceResult:
     openai_response_id: str
     security: AiSecuritySnapshot
     prompt_trace: PromptTrace
+    saved_at: datetime
 
 
 class AiAnalysisService:
@@ -52,11 +56,19 @@ class AiAnalysisService:
         openai_client: OpenAITextClient,
         *,
         prompt_compiler: IndividualSecurityPromptCompiler | None = None,
+        record_repository: AiAnalysisRecordRepository | None = None,
     ) -> None:
         self._openai_client = openai_client
         self._prompt_compiler = prompt_compiler or IndividualSecurityPromptCompiler()
+        self._record_repository = record_repository or AiAnalysisRecordRepository()
 
-    async def analyze(self, *, payload: AiAnalysisRequest, db: Session) -> AiAnalysisServiceResult:
+    async def analyze(
+        self,
+        *,
+        request_id: str,
+        payload: AiAnalysisRequest,
+        db: Session,
+    ) -> AiAnalysisServiceResult:
         security = db.get(SecurityMaster, payload.security_code)
         if security is None or not security.is_active:
             raise SecurityNotFoundError(payload.security_code)
@@ -84,11 +96,25 @@ class AiAnalysisService:
             preset=preset,
             request_metadata=compiled_prompt.trace.as_openai_metadata(),
         )
+        record = self._record_repository.save(
+            db=db,
+            record_input=AiAnalysisRecordInput(
+                request_id=request_id,
+                security=snapshot,
+                question=payload.question,
+                answer_text=response.output_text,
+                preset=preset,
+                model=AI_ANALYSIS_MODEL,
+                openai_response_id=response.response_id,
+                prompt_trace=compiled_prompt.trace,
+            ),
+        )
         return AiAnalysisServiceResult(
             answer_text=response.output_text,
             openai_response_id=response.response_id,
             security=snapshot,
             prompt_trace=compiled_prompt.trace,
+            saved_at=record.created_at,
         )
 
 

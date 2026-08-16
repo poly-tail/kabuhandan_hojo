@@ -1,5 +1,29 @@
 # Changelog
 
+## 2026-08-17 canonical AI response persistence / large reader
+
+- canonical `POST /api/ai/analyses` のcompletedかつ非空の成功回答だけを、新しいSQLAlchemy `ai_analysis_record`へ自動保存するようにした。既存のUUID `request_id`を保存IDとして再利用する。
+- 質問、回答、銘柄snapshot、model / preset / reasoning / verbosity、OpenAI response ID、prompt version / asset / hashを保存し、APIキー、prompt全文、provider raw response / errorは保存しない。
+- DB commit失敗はrollbackし、HTTP 500 `PERSISTENCE_ERROR`として扱う。未保存回答を成功にせず、legacy JSON履歴、mock、cacheへfallbackしない。
+- `GET /api/ai/analyses/{request_id}` を追加し、保存済み回答1件をbrowser-safe schemaで返すようにした。未知UUIDは `ANALYSIS_NOT_FOUND`、invalid UUIDは422とし、responseは`Cache-Control: no-store`とした。
+- `/ui/analysis` に保存済み表示と `別ウィンドウで大きく表示` リンクを追加し、`/ui/analysis/results/{request_id}` の最大幅1380px readerで質問・回答をプレーンテキスト再表示できるようにした。
+- AI送信中は銘柄検索・選択と質問編集を無効化し、待機中に選択銘柄が変わって旧回答が別銘柄の下へ表示される競合を防止した。
+- `/api/ai/analyses` 配下へmiddlewareで`Cache-Control: no-store`を付け、route handler前に生成されるFastAPI validation errorもcache対象外にした。
+- 保存transaction、POST→GET、失敗時の非保存、reader shell、秘密非露出をunit testへ追加した。認証、回答一覧、削除、保持期限、暗号化、利用者分離は今回の対象外とした。
+
+## 2026-08-17 individual-security prompt v2026.08.17
+
+- 添付 `株判断プロジェクト｜定型プロンプト集 v2026.08.17` を新しいimmutable asset bundleとして追加し、manifestのsource / asset hashとprompt versionを更新した。v2026.08.16 assetは再現用に保持する。
+- 共通OSの「銘柄名（銘柄コード）」併記規則と、共通入力の銘柄名・銘柄コード分離を反映した。3.1本文とno-tools制約は維持した。
+- 共通OS、必要な共通入力、実行制約、module 3.1だけを引き続き使用し、3.2〜3.14、JSON Schema、Structured Outputs、Web検索を追加していない。
+- 評価fixtureをv2026.08.17へ更新し、命名規則、asset version、他module / JSON Schema非混入を回帰テストで固定した。
+
+## 2026-08-17 specification baseline v1.3 / v1.6 / v1.8
+
+- 要件 v1.3、API v1.6、画面 v1.8を追加し、canonical成功回答の原子的なローカル保存、UUID詳細GET、大画面reader、prompt v2026.08.17を現行契約へ昇格した。
+- `SC-2026-08-17-02` として変更理由、保存内容、秘密境界、legacy互換性、非対象、trusted-local制約を `docs/spec_change_history.md` へ記録した。
+- 回答一覧APIは無認証状態で露出を広げるため追加せず、UUIDを知る利用者が1件を取得する最小契約に限定した。
+
 ## 2026-08-17 public repository bootstrap safety
 
 - 公開リポジトリの初回作成に備え、`.gitignore`で`.env`系ファイル（空の`.env.example`を除く）、秘密鍵・証明書、ローカルDB、ログ、pytest一時領域、Python cache / `egg-info`を追跡対象外にした。

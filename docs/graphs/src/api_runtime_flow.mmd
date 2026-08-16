@@ -21,6 +21,17 @@ flowchart TD
     monitoringLive["Security / Watchlist services + SQLAlchemy"]
     monitoringMock["MockMonitoringService + stable sample signals"]
     uiShell["HTML shell fetches\n/health /watchlist /dashboard /screening"]
+    analysisUi["GET /ui/analysis\nselect one security + question"]
+    analysisPost["POST /api/ai/analyses"]
+    promptCompiler["IndividualSecurityPromptCompiler\nv2026.08.17 + module 3.1"]
+    openai["OpenAI Responses API\ngpt-5.6-terra / STANDARD"]
+    validate["completed + response ID\nnon-empty output_text"]
+    save["transaction save\nai_analysis_record"]
+    answer["plain answer + saved request_id"]
+    reader["GET /ui/analysis/results/{request_id}"]
+    savedGet["GET /api/ai/analyses/{request_id}"]
+    savedAnswer["saved question + answer\ntextContent / pre-wrap"]
+    analysisError["typed error\nno mock/cache/fallback"]
 
     start --> runner
     runner --> parse
@@ -37,6 +48,7 @@ flowchart TD
     liveInit --> watchlist
     liveInit --> monitoring
     liveInit --> ui
+    liveInit --> analysisUi
     mockInit --> health
     mockInit --> watchlist
     mockInit --> monitoring
@@ -48,3 +60,14 @@ flowchart TD
     monitoring --> monitoringLive
     monitoring --> monitoringMock
     ui --> uiShell
+    analysisUi --> analysisPost
+    analysisPost --> promptCompiler
+    promptCompiler --> openai
+    openai --> validate
+    validate -->|valid| save
+    validate -->|invalid/error| analysisError
+    save -->|commit| answer
+    save -->|rollback| analysisError
+    answer --> reader
+    reader --> savedGet
+    savedGet --> savedAnswer

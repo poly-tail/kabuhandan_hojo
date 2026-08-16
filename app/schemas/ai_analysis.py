@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -11,7 +12,12 @@ from app.ai.presets import AnswerPresetId
 
 
 AiAnalysisStatus = Literal["success", "error"]
-AiAnalysisErrorCode = OpenAIErrorCode | Literal["SECURITY_NOT_FOUND", "DATABASE_UNAVAILABLE"]
+AiAnalysisErrorCode = OpenAIErrorCode | Literal[
+    "SECURITY_NOT_FOUND",
+    "DATABASE_UNAVAILABLE",
+    "PERSISTENCE_ERROR",
+    "ANALYSIS_NOT_FOUND",
+]
 
 
 class AiAnalysisRequest(BaseModel):
@@ -62,3 +68,20 @@ class AiAnalysisResponse(BaseModel):
     error: AiAnalysisError | None = None
     security: AiSecuritySnapshot | None = None
     openai_response_id: str | None = None
+    saved_at: datetime | None = None
+
+
+class AiSavedAnalysisResponse(BaseModel):
+    """Browser-safe representation of one locally saved successful answer."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    request_id: str
+    status: Literal["success"] = "success"
+    saved_at: datetime
+    security: AiSecuritySnapshot
+    question: str
+    answer_text: str
+    preset: AnswerPresetId
+    model: str
+    openai_response_id: str
