@@ -1,0 +1,70 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+.hypothesis/
+htmlcov/
+coverage.xml
+.coverage.*
+*.egg-info/
+tmp_pytest*/
+
+# Local environment / credentials
+.env*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+credentials*.json
+service-account*.json
+
+# Local data stores
+/data/*
+!/data/security_master_jp.csv
+/scripts/data/
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+*.sqlite-*
+
+# Node
+node_modules/
+
+# Build artifacts
+build/
+dist/
+
+# IDE / OS
+.vscode/
+.idea/
+.coverage
+.DS_Store
+Thumbs.db
+
+# Local outputs
+logs/*
+!logs/README.md
+analysis_output/*
+!analysis_output/README.md
+*.pid
+*.tmp
+*.bak
+*.swp
+*~
+
+# Browser / end-to-end test reports
+test-results/
+playwright-report/
+blob-report/
+
+# Generated graphs
+docs/graphs/generated/*.svg
+!docs/graphs/generated/README.md

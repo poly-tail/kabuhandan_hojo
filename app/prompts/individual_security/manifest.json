@@ -1,0 +1,46 @@
+{
+  "prompt_version": "2026.08.16",
+  "prompt_profile_id": "individual_security_comprehensive",
+  "compiler_version": "individual-security-v1",
+  "source": {
+    "title": "株判断プロジェクト｜定型プロンプト集 v2026.08.16",
+    "sha256": "6EDAE7A223A9D6C5CF0FC5E544B71501ADA6CFEAF51CFD33A506C39DE4962021"
+  },
+  "compile_order": [
+    "common_os",
+    "common_input_rules",
+    "execution_constraints",
+    "task_module"
+  ],
+  "assets": {
+    "common_os": {
+      "asset_id": "common_os@2026.08.16",
+      "path": "assets/v2026_08_16/common_os.md",
+      "source_section": "1. 株判断共通OS",
+      "sha256": "74F81A7CD31E49BE0D4692A953973B7E8FE43838CB4ED97DB288A2FE118BF135"
+    },
+    "common_input_rules": {
+      "asset_id": "common_input_rules@2026.08.16-mvp1",
+      "path": "assets/v2026_08_16/common_input_rules.md",
+      "source_section": "2. 共通入力テンプレート（個別銘柄MVPで必要な部分）",
+      "sha256": "366DE41D845D6156F8A0089D191A4D470B20588631BCA4F8AFFB9DEB5BFA6A86"
+    },
+    "execution_constraints": {
+      "asset_id": "execution_constraints_no_tools@mvp1",
+      "path": "assets/v2026_08_16/execution_constraints_no_tools.md",
+      "source_section": "アプリ実行制約（Web・外部市場データなし）",
+      "sha256": "5BE86DFC3DFE350EBAFAE5C4A20742CFDE43D6FC96D1F9DCFB46EAD324F9C843"
+    },
+    "task_module": {
+      "asset_id": "individual_comprehensive@2026.08.16",
+      "path": "assets/v2026_08_16/modules/individual_comprehensive.md",
+      "source_section": "3.1 総合的な個別銘柄分析",
+      "sha256": "E83E1C19238C92DD99FD7781A8317AF1ADC6D33743D6C8FCED135E4ABB4E4DB5"
+    }
+  },
+  "task_module": {
+    "module_id": "3.1",
+    "module_name": "総合的な個別銘柄分析",
+    "asset_role": "task_module"
+  }
+}

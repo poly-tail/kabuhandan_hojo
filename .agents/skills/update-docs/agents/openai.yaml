@@ -1,0 +1,4 @@
+interface:
+  display_name: "Update Docs"
+  short_description: "Keep repository docs aligned with code and workflow changes"
+  default_prompt: "Update the repository docs to match the latest code and workflow changes."

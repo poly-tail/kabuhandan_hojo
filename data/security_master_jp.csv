@@ -1,0 +1,37 @@
+ticker_code,local_code,name,name_english,market,industry_17,industry_33,listed_date,is_active
+1306,1306,ＮＥＸＴ ＦＵＮＤＳ ＴＯＰＩＸ連動型上場投信,NEXT FUNDS TOPIX Exchange Traded Fund,ETF,ETF,ETF,,true
+1321,1321,ＮＥＸＴ ＦＵＮＤＳ 日経２２５連動型上場投信,NEXT FUNDS Nikkei 225 Exchange Traded Fund,ETF,ETF,ETF,,true
+3563,3563,ＦＯＯＤ　＆　ＬＩＦＥ　ＣＯＭＰＡＮＩＥＳ,FOOD & LIFE COMPANIES LTD.,TSE Prime,Consumer Services,Retail Trade,2017-03-30,true
+4063,4063,信越化学工業,"Shin-Etsu Chemical Co., Ltd.",TSE Prime,Materials,Chemicals,,true
+4502,4502,武田薬品工業,Takeda Pharmaceutical Company Limited,TSE Prime,Healthcare,Pharmaceutical,,true
+4568,4568,第一三共,Daiichi Sankyo Company Limited,TSE Prime,Healthcare,Pharmaceutical,,true
+4661,4661,オリエンタルランド,"Oriental Land Co., Ltd.",TSE Prime,Consumer Services,Services,,true
+4689,4689,ＬＩＮＥヤフー,LY Corporation,TSE Prime,Information Technology,Information & Communication,,true
+6098,6098,リクルートホールディングス,"Recruit Holdings Co., Ltd.",TSE Prime,Consumer Services,Services,,true
+6367,6367,ダイキン工業,"Daikin Industries,Ltd.",TSE Prime,Industrials,Machinery,,true
+6501,6501,日立製作所,"Hitachi,Ltd.",TSE Prime,Industrials,Electric Appliances,,true
+6752,6752,パナソニックホールディングス,Panasonic Holdings Corporation,TSE Prime,Industrials,Electric Appliances,,true
+6758,6758,ソニーグループ,Sony Group Corporation,TSE Prime,Industrials,Electric Appliances,,true
+6861,6861,キーエンス,KEYENCE CORPORATION,TSE Prime,Industrials,Electric Appliances,,true
+6954,6954,ファナック,FANUC CORPORATION,TSE Prime,Industrials,Electric Appliances,,true
+7011,7011,三菱重工業,"Mitsubishi Heavy Industries,Ltd.",TSE Prime,Industrials,Machinery,,true
+7203,7203,トヨタ自動車,Toyota Motor Corporation,TSE Prime,Automobiles,Transportation Equipment,1949-05-16,true
+7267,7267,本田技研工業,"HONDA MOTOR CO.,LTD.",TSE Prime,Automobiles,Transportation Equipment,,true
+7741,7741,ＨＯＹＡ,HOYA CORPORATION,TSE Prime,Healthcare,Precision Instruments,,true
+7974,7974,任天堂,"Nintendo Co., Ltd.",TSE Prime,Consumer Goods,Other Products,1962-01-01,true
+8001,8001,伊藤忠商事,ITOCHU Corporation,TSE Prime,Trading Companies,Wholesale Trade,,true
+8031,8031,三井物産,"MITSUI & CO.,LTD.",TSE Prime,Trading Companies,Wholesale Trade,,true
+8035,8035,東京エレクトロン,Tokyo Electron Limited,TSE Prime,Industrials,Electric Appliances,1963-11-11,true
+8058,8058,三菱商事,Mitsubishi Corporation,TSE Prime,Trading Companies,Wholesale Trade,,true
+8306,8306,三菱UFJフィナンシャル・グループ,"Mitsubishi UFJ Financial Group, Inc.",TSE Prime,Financials,Banks,,true
+8316,8316,三井住友フィナンシャルグループ,"Sumitomo Mitsui Financial Group, Inc.",TSE Prime,Financials,Banks,,true
+8411,8411,みずほフィナンシャルグループ,"Mizuho Financial Group, Inc.",TSE Prime,Financials,Banks,,true
+9020,9020,東日本旅客鉄道,East Japan Railway Company,TSE Prime,Transportation,Land Transportation,,true
+9022,9022,東海旅客鉄道,Central Japan Railway Company,TSE Prime,Transportation,Land Transportation,,true
+9101,9101,日本郵船,Nippon Yusen Kabushiki Kaisha,TSE Prime,Transportation,Marine Transportation,,true
+9104,9104,商船三井,"Mitsui O.S.K. Lines,Ltd.",TSE Prime,Transportation,Marine Transportation,,true
+9202,9202,ＡＮＡホールディングス,ANA HOLDINGS INC.,TSE Prime,Transportation,Air Transportation,,true
+9432,9432,日本電信電話,NIPPON TELEGRAPH AND TELEPHONE CORPORATION,TSE Prime,Information Technology,Information & Communication,,true
+9433,9433,ＫＤＤＩ,KDDI CORPORATION,TSE Prime,Information Technology,Information & Communication,,true
+9434,9434,ソフトバンク,SoftBank Corp.,TSE Prime,Information Technology,Information & Communication,,true
+9984,9984,ソフトバンクグループ,SoftBank Group Corp.,TSE Prime,Information Technology,Information & Communication,1994-07-22,true

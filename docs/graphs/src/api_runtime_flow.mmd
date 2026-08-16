@@ -1,0 +1,50 @@
+flowchart TD
+    start["User runs API command"]
+    runner["scripts/run_api.py"]
+    parse["parse_args()"]
+    branch{"--mock specified?"}
+    mockEnv["set APP_USE_MOCK=true"]
+    clear["clear settings / engine caches"]
+    uvicorn["uvicorn factory run"]
+    create["app.main:create_app()"]
+    lifespan{"startup mode"}
+    liveInit["init_db() creates tables"]
+    mockInit["init_db() skipped"]
+    health["GET /health"]
+    watchlist["GET or POST /watchlist"]
+    monitoring["GET /dashboard or /screening"]
+    ui["GET /ui/dashboard"]
+    healthLive["DB session + SELECT 1\nresponse.database = ok"]
+    healthMock["no DB access\nresponse.database = mock"]
+    watchLive["WatchlistService + SQLAlchemy"]
+    watchMock["MockWatchlistService + in-memory sample data"]
+    monitoringLive["Security / Watchlist services + SQLAlchemy"]
+    monitoringMock["MockMonitoringService + stable sample signals"]
+    uiShell["HTML shell fetches\n/health /watchlist /dashboard /screening"]
+
+    start --> runner
+    runner --> parse
+    parse --> branch
+    branch -->|yes| mockEnv
+    branch -->|no| clear
+    mockEnv --> clear
+    clear --> uvicorn
+    uvicorn --> create
+    create --> lifespan
+    lifespan -->|live| liveInit
+    lifespan -->|mock| mockInit
+    liveInit --> health
+    liveInit --> watchlist
+    liveInit --> monitoring
+    liveInit --> ui
+    mockInit --> health
+    mockInit --> watchlist
+    mockInit --> monitoring
+    mockInit --> ui
+    health --> healthLive
+    health --> healthMock
+    watchlist --> watchLive
+    watchlist --> watchMock
+    monitoring --> monitoringLive
+    monitoring --> monitoringMock
+    ui --> uiShell

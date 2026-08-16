@@ -1,0 +1,17 @@
+graph TD
+    input["Input / Request / Event"]
+    app["app layer"]
+    domain["domain logic"]
+    infra["infrastructure"]
+    ui["ui / output"]
+    docs["docs update"]
+    tests["tests / verification"]
+
+    input --> app
+    app --> domain
+    domain --> infra
+    domain --> ui
+    infra --> ui
+    app --> docs
+    domain --> tests
+    infra --> tests

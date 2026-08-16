@@ -1,0 +1,17 @@
+"""SQLAlchemy model registry."""
+
+from app.models.base import Base
+from app.models.portfolio import PortfolioHolding
+from app.models.price_daily import PriceDaily
+from app.models.score_daily import ScoreDaily
+from app.models.security import SecurityMaster
+from app.models.watchlist import Watchlist
+
+__all__ = [
+    "Base",
+    "PortfolioHolding",
+    "PriceDaily",
+    "ScoreDaily",
+    "SecurityMaster",
+    "Watchlist",
+]

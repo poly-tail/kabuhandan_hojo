@@ -1,0 +1,13 @@
+[project]
+name = "kabuhandan_hojo"
+
+[paths]
+docs_dir = "docs"
+scripts_dir = "scripts"
+skills_dir = ".agents/skills"
+
+[commands]
+sync_current = "python scripts/sync_current_files.py --write"
+check_current = "python scripts/sync_current_files.py --check"
+render_graphs = "python scripts/render_docs_graphs.py"
+

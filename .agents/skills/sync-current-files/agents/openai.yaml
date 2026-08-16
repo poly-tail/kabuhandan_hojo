@@ -1,0 +1,4 @@
+interface:
+  display_name: "Sync Current Files"
+  short_description: "Refresh docs current.md pointers to the latest versioned files"
+  default_prompt: "Sync the current.md files with the latest versioned requirements and specs."

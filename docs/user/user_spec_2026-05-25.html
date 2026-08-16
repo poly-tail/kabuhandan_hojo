@@ -1,0 +1,394 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <title>株判断補助アプリ ユーザー向け仕様書</title>
+  <style>
+    @page {
+      size: A4;
+      margin: 16mm 15mm;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      color: #17202a;
+      background: #ffffff;
+      font-family: "Yu Gothic", "Meiryo", "Hiragino Kaku Gothic ProN", sans-serif;
+      font-size: 10.5pt;
+      line-height: 1.72;
+    }
+
+    h1,
+    h2,
+    h3 {
+      margin: 0;
+      color: #122034;
+      letter-spacing: 0;
+      line-height: 1.35;
+    }
+
+    h1 {
+      font-size: 24pt;
+      margin-bottom: 6mm;
+    }
+
+    h2 {
+      font-size: 15pt;
+      margin: 9mm 0 3mm;
+      padding-bottom: 1.5mm;
+      border-bottom: 1px solid #d7dde5;
+    }
+
+    h3 {
+      font-size: 12pt;
+      margin: 5mm 0 2mm;
+    }
+
+    p {
+      margin: 0 0 2.5mm;
+    }
+
+    ul,
+    ol {
+      margin: 0 0 3mm 5mm;
+      padding-left: 5mm;
+    }
+
+    li {
+      margin: 0.8mm 0;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 3mm 0 5mm;
+      table-layout: fixed;
+    }
+
+    th,
+    td {
+      border: 1px solid #d9e0e8;
+      padding: 2mm 2.5mm;
+      vertical-align: top;
+      word-break: break-word;
+    }
+
+    th {
+      width: 30%;
+      background: #eef3f7;
+      color: #18324f;
+      font-weight: 700;
+      text-align: left;
+    }
+
+    code {
+      padding: 0.2mm 1mm;
+      border-radius: 2mm;
+      background: #f1f4f7;
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 9.5pt;
+    }
+
+    .cover {
+      padding-top: 18mm;
+      min-height: 250mm;
+    }
+
+    .subtitle {
+      margin-bottom: 12mm;
+      color: #536579;
+      font-size: 12pt;
+    }
+
+    .meta {
+      width: 100%;
+      max-width: 150mm;
+      margin-top: 10mm;
+      border: 1px solid #d6dde6;
+    }
+
+    .meta div {
+      display: grid;
+      grid-template-columns: 36mm 1fr;
+      border-bottom: 1px solid #d6dde6;
+    }
+
+    .meta div:last-child {
+      border-bottom: 0;
+    }
+
+    .meta strong,
+    .meta span {
+      padding: 2.2mm 3mm;
+    }
+
+    .meta strong {
+      background: #eef3f7;
+      color: #18324f;
+    }
+
+    .note {
+      margin: 5mm 0;
+      padding: 3mm 4mm;
+      border-left: 4px solid #2d6cdf;
+      background: #f3f7fd;
+    }
+
+    .warning {
+      margin: 5mm 0;
+      padding: 3mm 4mm;
+      border-left: 4px solid #b7791f;
+      background: #fff8e7;
+    }
+
+    .badge-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 2mm;
+      margin: 2mm 0 4mm;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 1mm 2.5mm;
+      border-radius: 999px;
+      background: #eef3f7;
+      color: #18324f;
+      font-size: 9.5pt;
+      font-weight: 700;
+    }
+
+    .page-break {
+      break-before: page;
+    }
+
+    .small {
+      color: #5a6b7d;
+      font-size: 9.3pt;
+    }
+
+    .toc a {
+      color: #173e72;
+      text-decoration: none;
+    }
+
+    @media print {
+      body {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="cover">
+      <h1>株判断補助アプリ<br>ユーザー向け仕様書</h1>
+      <p class="subtitle">日本株の保有判断を補助するための、画面機能・AI分析・データ取扱い仕様</p>
+      <div class="meta">
+        <div><strong>作成日</strong><span>2026年5月25日</span></div>
+        <div><strong>対象</strong><span>アプリ利用者、運用確認者、機能確認担当者</span></div>
+        <div><strong>対象画面</strong><span>ダッシュボード、保有銘柄、ウォッチリスト、個別銘柄、チャート、AI分析</span></div>
+        <div><strong>位置づけ</strong><span>投資判断の材料整理ツール。売買の最終判断や自動売買は行いません。</span></div>
+      </div>
+      <div class="warning">
+        本アプリは投資助言や売買指示を目的にしたものではありません。株価、開示、決算、需給、テクニカル、AI要約を並べ、利用者が判断材料と反証条件を確認しやすくするための補助機能です。
+      </div>
+    </section>
+
+    <section class="page-break toc">
+      <h2>目次</h2>
+      <ol>
+        <li><a href="#purpose">目的と利用範囲</a></li>
+        <li><a href="#screens">主要画面</a></li>
+        <li><a href="#portfolio">保有銘柄機能</a></li>
+        <li><a href="#watchlist">ウォッチリスト機能</a></li>
+        <li><a href="#ai-review">AI分析機能</a></li>
+        <li><a href="#data">データと参照元</a></li>
+        <li><a href="#security">セキュリティ</a></li>
+        <li><a href="#limits">制約と残課題</a></li>
+      </ol>
+    </section>
+
+    <section id="purpose" class="page-break">
+      <h2>1. 目的と利用範囲</h2>
+      <p>株判断補助アプリは、日本株について「今どこを見るべきか」を整理するローカル運用前提のアプリです。利用者は保有銘柄、ウォッチリスト、個別銘柄の材料、チャート、需給、AI分析を確認できます。</p>
+      <p>主な利用場面は、保有銘柄の定期レビュー、ウォッチリストの監視、材料発生時の確認、チャートや需給の確認、決算や開示前後の見直しです。</p>
+      <div class="note">
+        AI分析は「判断材料・反証条件・リスク」を整理します。「必ず買う」「必ず売る」といった断定や、自動発注は行いません。
+      </div>
+      <h3>利用者ができること</h3>
+      <ul>
+        <li>保有銘柄を登録し、数量や平均取得単価を管理する。</li>
+        <li>ウォッチリストに監視銘柄を登録し、気になる銘柄だけ選択してAI分析する。</li>
+        <li>銘柄ごとの材料、テクニカル、チャート、需給、スコアを確認する。</li>
+        <li>OpenAI APIを使い、保有銘柄または選択したウォッチリストをまとめてレビューする。</li>
+        <li>APIを呼ばないサンプル表示で、画面表示だけを確認する。</li>
+      </ul>
+    </section>
+
+    <section id="screens" class="page-break">
+      <h2>2. 主要画面</h2>
+      <table>
+        <tr>
+          <th>ダッシュボード</th>
+          <td>市場概況、優先確認銘柄、アラート、保有銘柄、ウォッチリスト、材料、スクリーニングをまとめて確認する中心画面です。</td>
+        </tr>
+        <tr>
+          <th>保有銘柄</th>
+          <td>保有銘柄の登録、一覧確認、評価額確認、保有銘柄の一括AI分析を行います。</td>
+        </tr>
+        <tr>
+          <th>ウォッチリスト</th>
+          <td>監視中の銘柄を一覧し、選択した銘柄だけAI分析できます。</td>
+        </tr>
+        <tr>
+          <th>個別銘柄</th>
+          <td>仮説メモ、地合い分解、材料、テクニカル、需給、スコア、参照リンクを確認します。</td>
+        </tr>
+        <tr>
+          <th>チャート</th>
+          <td>20日、40日、全期間の切り替え、移動平均、RSI、MACDを確認します。</td>
+        </tr>
+      </table>
+    </section>
+
+    <section id="portfolio">
+      <h2>3. 保有銘柄機能</h2>
+      <p>保有銘柄は、実DBに登録された銘柄を優先して利用します。未登録またはテスト時には、サーバー側の仮保有銘柄を利用できます。</p>
+      <h3>現在の確認用保有銘柄</h3>
+      <table>
+        <tr><th>3563</th><td>FOOD &amp; LIFE COMPANIES / F&amp;LCホールディングス</td></tr>
+        <tr><th>7011</th><td>三菱重工業</td></tr>
+        <tr><th>6758</th><td>ソニーグループ</td></tr>
+        <tr><th>7203</th><td>トヨタ自動車</td></tr>
+        <tr><th>7974</th><td>任天堂</td></tr>
+      </table>
+      <h3>保有銘柄の優先順位</h3>
+      <ol>
+        <li>実DBに登録されている保有銘柄</li>
+        <li>ローカルストレージや設定ファイルの保有銘柄</li>
+        <li>テスト用の仮保有銘柄</li>
+      </ol>
+    </section>
+
+    <section id="watchlist" class="page-break">
+      <h2>4. ウォッチリスト機能</h2>
+      <p>ウォッチリストは、まだ保有していない銘柄や追加監視したい銘柄を確認するための機能です。ダッシュボード上でAI分析対象をチェックし、選択した銘柄だけをまとめて分析できます。</p>
+      <h3>主な状態</h3>
+      <ul>
+        <li>AI分析対象に選択済み</li>
+        <li>未選択</li>
+        <li>全選択</li>
+        <li>選択解除</li>
+        <li>分析実行中</li>
+        <li>成功または失敗</li>
+      </ul>
+    </section>
+
+    <section id="ai-review" class="page-break">
+      <h2>5. AI分析機能</h2>
+      <p>AI分析はバックエンドからOpenAI APIを呼び出します。APIキーはフロントエンドに置かず、サーバー環境変数の<code>OPENAI_API_KEY</code>から読み込みます。利用モデルは<code>OPENAI_MODEL</code>で指定し、未指定時はアプリ側のデフォルトを使います。</p>
+      <h3>分析対象</h3>
+      <ul>
+        <li>保有銘柄を一括AI分析</li>
+        <li>テスト用仮保有銘柄で分析</li>
+        <li>選択ウォッチリストをAI分析</li>
+      </ul>
+      <h3>画面上のボタンと選択肢</h3>
+      <table>
+        <tr>
+          <th>保有銘柄を一括AI分析</th>
+          <td>実DBの保有銘柄を優先し、登録がない場合は条件に応じて仮保有銘柄を分析します。</td>
+        </tr>
+        <tr>
+          <th>テスト用仮保有銘柄で分析</th>
+          <td>実DBの内容に関係なく、サーバー側の確認用銘柄セットで分析します。</td>
+        </tr>
+        <tr>
+          <th>選択ウォッチリストをAI分析</th>
+          <td>ウォッチリストでチェックした銘柄だけを分析します。</td>
+        </tr>
+        <tr>
+          <th>最新ニュースも検索（OpenAI API使用）</th>
+          <td>OpenAI APIのWeb検索ツールを使い、公開情報も確認します。通常より時間とAPI利用量が増えます。</td>
+        </tr>
+        <tr>
+          <th>APIなしのサンプル表示（課金なし）</th>
+          <td>OpenAI APIを呼ばず、固定のサンプル結果を表示します。画面確認用であり、実分析ではありません。</td>
+        </tr>
+      </table>
+      <h3>AIカードの表示項目</h3>
+      <ul>
+        <li>銘柄コード、銘柄名</li>
+        <li>総合判断と日本語ラベル</li>
+        <li>信頼度 confidence</li>
+        <li>今日見るべきポイント</li>
+        <li>テクニカル所見</li>
+        <li>材料・ニュース所見</li>
+        <li>保有者向けアクション</li>
+        <li>反証条件</li>
+        <li>リスク</li>
+        <li>参照元URL</li>
+      </ul>
+      <h3>判断ラベル</h3>
+      <div class="badge-list">
+        <span class="badge">hold: 保有継続</span>
+        <span class="badge">buy_more_candidate: 買増し候補</span>
+        <span class="badge">take_profit_candidate: 一部利確候補</span>
+        <span class="badge">reduce_risk: リスク低減</span>
+        <span class="badge">watch: 様子見</span>
+      </div>
+      <h3>APIの主な状態</h3>
+      <table>
+        <tr><th>未実行</th><td>まだ分析を開始していない状態です。</td></tr>
+        <tr><th>実行中</th><td>バックエンドでOpenAI APIまたはサンプル分析を処理中です。</td></tr>
+        <tr><th>成功</th><td>JSONレスポンスを受け取り、銘柄別カードを表示できる状態です。</td></tr>
+        <tr><th>失敗</th><td>APIキー、請求、利用上限、モデル名、通信、JSON解析などで処理できなかった状態です。</td></tr>
+        <tr><th>APIキー未設定</th><td><code>OPENAI_API_KEY</code>がサーバーに設定されていません。</td></tr>
+        <tr><th>JSON parse失敗</th><td>モデル応答が指定形式のJSONとして読めなかった状態です。画面には安全なエラー情報だけ表示します。</td></tr>
+        <tr><th>Web検索なしの簡易分析</th><td>Web検索を使わず、アプリ側のデータとプロンプトだけで分析します。</td></tr>
+      </table>
+    </section>
+
+    <section id="data" class="page-break">
+      <h2>6. データと参照元</h2>
+      <p>本アプリの基幹データ源は、J-Quants、EDINET API、YouTube Data API、明示的に許可したIRサイトです。Web検索を使うAI分析では、OpenAI API側の検索結果が参照元として返る場合があります。</p>
+      <h3>データ種別</h3>
+      <table>
+        <tr><th>株価・市場データ</th><td>J-Quants連携を前提とします。AIレビュー用のマーケットスナップショットは、実データ接続前でも動作確認できるように仮データを返せる構造です。</td></tr>
+        <tr><th>開示・決算</th><td>EDINET API、TDnet連携、許可済みIRサイトを対象にします。</td></tr>
+        <tr><th>動画材料</th><td>YouTube Data APIで登録済みチャンネルを確認します。</td></tr>
+        <tr><th>手動参照リンク</th><td>画面上の参考リンクとして扱います。基幹ソースとして自動取得するものではありません。</td></tr>
+      </table>
+    </section>
+
+    <section id="security">
+      <h2>7. セキュリティ</h2>
+      <ul>
+        <li>OpenAI APIキーはバックエンドのみで読み込み、フロントエンドには露出しません。</li>
+        <li><code>.env</code>はgit管理対象外です。</li>
+        <li><code>.env.example</code>にはキーの値を入れず、設定項目だけを記載します。</li>
+        <li>APIエラー時、画面にはAPIキーや内部スタックトレースを表示しません。</li>
+        <li>ログは必要最低限に抑えます。</li>
+      </ul>
+    </section>
+
+    <section id="limits">
+      <h2>8. 制約と残課題</h2>
+      <ul>
+        <li>OpenAI APIの実行には、OpenAI Platform側の請求設定、利用上限、モデル利用権限が必要です。ChatGPT PlusなどのWeb版契約とは別管理です。</li>
+        <li>Web検索ありのAI分析は、検索なしより時間がかかり、API利用量も増えます。</li>
+        <li>AIの出力は、公式開示、株価、出来高、決算、リスク要因と合わせて確認してください。</li>
+        <li>AIレビュー用のマーケットスナップショットは、実株価APIへの差し替えを前提にしたサービス層に分離されています。</li>
+        <li>外部サイトの規約違反やrobots無視を前提にした取得は行いません。</li>
+      </ul>
+      <p class="small">この仕様書は2026年5月25日時点のアプリ状態を利用者向けに整理したものです。</p>
+    </section>
+  </main>
+</body>
+</html>
