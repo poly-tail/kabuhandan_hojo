@@ -1,6 +1,6 @@
 # API Spec Current
 
-> 現在の正本: `api_spec_v1.9.md`
+> 現在の正本: `api_spec_v2.0.md`
 
 ## 概要
 
@@ -9,15 +9,23 @@
 
 ## 現在値
 
-- API仕様書: v1.9
+- API仕様書: v2.0
 - 更新日: 2026-08-18
-- 変更概要: `GET /securities/search`の数字/英字code対応と、`POST /portfolio`の一意なJ-Quants raw code aliasを追加
+- 変更概要: `GET /securities/master/status`と、4,000件/5%縮小guard・明示legacy採用・参照identity保護を持つJ-Quants current/historical master sync、provenance/count contractを追加
 
 ## 主な変更点
 
 - `/ui/dashboard/data` を中心にした UI view model 契約
 - 銘柄名、数字code、英字を含むcodeを検索し、raw master identifierを返す`GET /securities/search`
+- case-insensitive code検索、exact/local/prefix/name/market priorityと優先株等のprimary identifier保持
 - `POST /portfolio`の完全一致優先と、一意な`<4文字>0` aliasによる既存master解決
+- `GET /securities/master/status`のscope、complete、情報基準日、同期時刻、ローカル/J-Quants有効件数
+- `POST /securities/master/sync`のrequired failure、optional seed fallback、取得/永続化count分離
+- 完全なcurrentだけのJ-Quants所有record無効化、historical active/status保護、explicit legacy adoption
+- production complete floor 4,000、既存J-Quants/支配的legacy基準から最大5%の縮小、参照付きidentity splitのfail-closed保護
+- DB-only検索、provider body非露出、CLI dry-run前のschema/36-seed初期化境界
+- ordinary/preferred/alphanumeric code保持、source/listing date分離、pagination guard、bounded 429 retry
+- BYOK/private local/full dataset非同梱・非再配布、東証listed-issue scope、地方取引所単独銘柄非保証
 - legacy stock-reviewの`review_runs`とprovider `api_calls`を分離したusage API契約
 - `openai-standard-2026-08-17`によるtoken/Web検索概算と`unpriced_api_calls`
 - live mode の no-mock 方針

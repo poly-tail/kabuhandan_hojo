@@ -1,5 +1,19 @@
 # Folder Structure
 
+## 2026-08-18 J-Quants銘柄マスター同期 addendum
+
+- `app/schemas/security_master_sync.py`: `GET /securities/master/status`と`POST /securities/master/sync`のscope、provenance、完全性、件数schema。
+- `app/api/routes/monitoring.py`: status取得、required J-Quants同期、optional seed fallbackのHTTP境界。
+- `app/api/routes/ui.py`: `東証全銘柄を同期`、完全/未確認status、情報基準日、同期時刻、J-Quants/ローカル件数、同期結果feedback。
+- `app/services/security_master_catalog.py`: 36件のbundled seedを不足recordだけへinsertし、J-Quants recordを上書きしないcatalog。
+- `app/models/security.py` / `src/kabuhandan_hojo/models/entities.py`: master source/as-of/sync IDと`security_master_sync_run` provenance/count entity。
+- `src/kabuhandan_hojo/connectors/jquants.py`: listed master pagination、ordinary/preferred/alphanumeric code保持、source/listing date分離、bounded 429 retry、provider bodyを除くsafe error変換。
+- `src/kabuhandan_hojo/services/ingestion.py`: 本番4,000件/5%縮小guard、complete/current/historical判定、J-Quants ownership限定deactivation、FK参照identity collision拒否、status/count集計、explicit legacy adoption。
+- `scripts/sync_security_master.py`: browserなしのcurrent/historical/dry-runと明示legacy adoption。dry-run前にも`init_db()`によるschema/seed初期化が起こり得る。
+- `tests/unit/test_jquants_connector.py`、`test_security_master_sync.py`、`test_security_master_status_api.py`、`test_security_master_provenance_migration.py`: connector、service、API、SQLite/PostgreSQL互換provenanceの回帰test。
+- `tests/unit/test_security_profile_master_mapping.py`、`test_security_search_case_insensitive.py`、`test_sync_security_master_script.py`、`test_mock_ui.py`: source/listing date分離、DB-only検索/no-provider-call、CLI safe error、UI contractの回帰test。
+- `data/security_master_jp.csv`: 36件のbundled search seedだけを追跡。完全なJ-Quants datasetとローカルDBは`/data/*`でgitignoreし、public repositoryへ同梱・再配布しない。
+
 ## 2026-08-18 search / portfolio addendum
 
 - `app/api/routes/ui.py`: dashboard検索結果の`保有入力へ` / `詳細を見る`、公開code表示、portfolioフォームprefill。
@@ -10,10 +24,10 @@
 
 ## 2026-08-18 specification docs addendum
 
-- `docs/requirements/requirements_v1.6.md`: 検索から保有入力への要件とraw/public code境界。
-- `docs/specs/api_spec_v1.9.md`: search responseとportfolio aliasのAPI契約。
-- `docs/screen_specs/screen_spec_v2.1.md`: `保有入力へ` / `詳細を見る`と非保存prefillの画面契約。
-- `docs/spec_change_history.md`: `SC-2026-08-18-01`の変更理由、互換性、非対象、既知制約。
+- `docs/requirements/requirements_v1.7.md`: v1.6を累積し、BYOK/private local master sync、scope、完全性、ownership、historical保護を追加。
+- `docs/specs/api_spec_v2.0.md`: v1.9を累積し、status/sync response、provenance、count、fallback/error境界を追加。
+- `docs/screen_specs/screen_spec_v2.2.md`: v2.1を累積し、同期button、status、情報基準日、件数feedbackを追加。
+- `docs/spec_change_history.md`: `SC-2026-08-18-02`の変更理由、互換性、非対象、既知制約。`SC-2026-08-18-01`は履歴として維持。
 
 ## 2026-08-17 specification docs addendum
 
@@ -66,8 +80,8 @@
 
 ## 2026-04-23 local master addendum
 
-- `data/security_master_jp.csv`: local Japanese security master seed.
-- `app/services/security_master_catalog.py`: CSV loader and DB upsert service for `security_master`.
+- `data/security_master_jp.csv`: 36件のlocal Japanese security search seed。full masterではない。
+- `app/services/security_master_catalog.py`: CSV loader and insert-only seed service for `security_master`.
 
 ## 2026-04-23 YouTube / IR addendum
 
@@ -116,7 +130,7 @@ docs/
 
 scripts/                 運用・同期スクリプト
 tests/                   unit / integration test
-data/                    SQLite などのローカルデータ
+data/                    SQLite・provider同期結果等のgit管理外ローカルデータと、例外的に追跡する36件seed
 assets/                  補助アセット
 ```
 

@@ -921,6 +921,7 @@ class DashboardExperienceService:
                     market="ETF",
                     industry_17=None,
                     industry_33=None,
+                    master_source="local_seed",
                 )
             )
             session.flush()

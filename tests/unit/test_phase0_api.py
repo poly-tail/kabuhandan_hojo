@@ -14,6 +14,7 @@ from app.db.session import get_db, get_engine, get_session_factory, init_db
 from app.main import create_app
 from app.models import Base
 from app.services.monitoring_runtime import get_monitoring_container, get_monitoring_settings
+from app.services.security_master_catalog import local_security_master_catalog
 from kabuhandan_hojo.connectors.base import DailyBarRecord, DocumentRecord, ListedIssueRecord, MarginSnapshotRecord
 from kabuhandan_hojo.models import Base as MonitoringBase
 
@@ -33,7 +34,7 @@ def clear_runtime_state() -> Generator[None, None, None]:
     get_monitoring_container.cache_clear()
 
 
-def _build_live_client() -> TestClient:
+def _build_live_client(*, seed_catalog: bool = False) -> TestClient:
     app = create_app()
     engine = create_engine(
         "sqlite://",
@@ -49,6 +50,9 @@ def _build_live_client() -> TestClient:
     )
     MonitoringBase.metadata.create_all(bind=engine)
     Base.metadata.create_all(bind=engine)
+    if seed_catalog:
+        with testing_session_local() as seed_session:
+            local_security_master_catalog.sync_to_db(seed_session, commit=True)
 
     def override_get_db() -> Generator[Session, None, None]:
         db = testing_session_local()
@@ -292,18 +296,35 @@ def test_security_master_sync_populates_db_search_catalog(monkeypatch: pytest.Mo
     monkeypatch.setenv("DATABASE_URL", "sqlite://")
 
     async def fake_fetch_listed_issues(*, as_of=None) -> list[ListedIssueRecord]:
-        return [
+        source_date = date(2026, 5, 26)
+        records = [
             ListedIssueRecord(
                 ticker_code="7203",
-                local_code="7203",
+                local_code="72030",
                 name="トヨタ自動車",
                 name_english="Toyota Motor Corporation",
                 market="TSE Prime",
                 industry_17="Automobiles",
                 industry_33="Transportation Equipment",
                 listed_date=date(1949, 5, 16),
+                source_as_of=source_date,
             )
         ]
+        records.extend(
+            ListedIssueRecord(
+                ticker_code=str(code),
+                local_code=f"{code}0",
+                name=f"Test {code}",
+                name_english=None,
+                market="TSE Prime",
+                industry_17=None,
+                industry_33=None,
+                listed_date=None,
+                source_as_of=source_date,
+            )
+            for code in range(1000, 4999)
+        )
+        return records
 
     container = get_monitoring_container()
     monkeypatch.setattr(container.jquants_connector, "fetch_listed_issues", fake_fetch_listed_issues)
@@ -338,7 +359,7 @@ def test_security_search_uses_local_japanese_catalog_for_known_codes(monkeypatch
     monkeypatch.setenv("APP_USE_MOCK", "false")
     monkeypatch.setenv("DATABASE_URL", "sqlite://")
 
-    with _build_live_client() as client:
+    with _build_live_client(seed_catalog=True) as client:
         response = client.get("/securities/search", params={"q": "3563"})
 
     assert response.status_code == 200

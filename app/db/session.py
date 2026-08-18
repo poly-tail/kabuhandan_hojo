@@ -134,6 +134,88 @@ def _apply_sqlite_compat_migrations(engine) -> None:
                 existing_columns.add(column_name)
 
 
+def _apply_security_master_provenance_migration(engine) -> None:
+    """Add master-sync provenance columns to existing SQLite/PostgreSQL tables."""
+
+    db_inspector = inspect(engine)
+    if not db_inspector.has_table("security_master"):
+        return
+    existing_columns = {column["name"] for column in db_inspector.get_columns("security_master")}
+    column_specs = (
+        (
+            "master_source",
+            "ALTER TABLE security_master ADD COLUMN master_source VARCHAR(32) NOT NULL DEFAULT 'legacy'",
+        ),
+        ("source_as_of", "ALTER TABLE security_master ADD COLUMN source_as_of DATE"),
+        ("last_seen_sync_id", "ALTER TABLE security_master ADD COLUMN last_seen_sync_id VARCHAR(36)"),
+    )
+    with engine.begin() as connection:
+        for column_name, ddl in column_specs:
+            if column_name in existing_columns:
+                continue
+            connection.exec_driver_sql(ddl)
+            existing_columns.add(column_name)
+
+    db_inspector = inspect(engine)
+    if not db_inspector.has_table("security_master_sync_run"):
+        return
+    existing_run_columns = {
+        column["name"] for column in db_inspector.get_columns("security_master_sync_run")
+    }
+    run_column_specs = (
+        ("source", "ALTER TABLE security_master_sync_run ADD COLUMN source VARCHAR(32)"),
+        ("source_scope", "ALTER TABLE security_master_sync_run ADD COLUMN source_scope VARCHAR(64)"),
+        ("source_as_of", "ALTER TABLE security_master_sync_run ADD COLUMN source_as_of DATE"),
+        ("synced_at", "ALTER TABLE security_master_sync_run ADD COLUMN synced_at TIMESTAMP"),
+        (
+            "complete",
+            "ALTER TABLE security_master_sync_run ADD COLUMN complete BOOLEAN NOT NULL DEFAULT FALSE",
+        ),
+        (
+            "is_current_snapshot",
+            "ALTER TABLE security_master_sync_run ADD COLUMN is_current_snapshot BOOLEAN NOT NULL DEFAULT TRUE",
+        ),
+        (
+            "fetched_count",
+            "ALTER TABLE security_master_sync_run ADD COLUMN fetched_count INTEGER NOT NULL DEFAULT 0",
+        ),
+        (
+            "inserted_count",
+            "ALTER TABLE security_master_sync_run ADD COLUMN inserted_count INTEGER NOT NULL DEFAULT 0",
+        ),
+        (
+            "updated_count",
+            "ALTER TABLE security_master_sync_run ADD COLUMN updated_count INTEGER NOT NULL DEFAULT 0",
+        ),
+        (
+            "reactivated_count",
+            "ALTER TABLE security_master_sync_run ADD COLUMN reactivated_count INTEGER NOT NULL DEFAULT 0",
+        ),
+        (
+            "deactivated_count",
+            "ALTER TABLE security_master_sync_run ADD COLUMN deactivated_count INTEGER NOT NULL DEFAULT 0",
+        ),
+        (
+            "active_total",
+            "ALTER TABLE security_master_sync_run ADD COLUMN active_total INTEGER NOT NULL DEFAULT 0",
+        ),
+        (
+            "jquants_active_count",
+            "ALTER TABLE security_master_sync_run ADD COLUMN jquants_active_count INTEGER NOT NULL DEFAULT 0",
+        ),
+        (
+            "adopted_legacy_count",
+            "ALTER TABLE security_master_sync_run ADD COLUMN adopted_legacy_count INTEGER NOT NULL DEFAULT 0",
+        ),
+    )
+    with engine.begin() as connection:
+        for column_name, ddl in run_column_specs:
+            if column_name in existing_run_columns:
+                continue
+            connection.exec_driver_sql(ddl)
+            existing_run_columns.add(column_name)
+
+
 @lru_cache(maxsize=1)
 def get_engine():
     """Return the lazily initialized SQLAlchemy engine."""
@@ -173,6 +255,7 @@ def init_db() -> None:
 
     MonitoringBase.metadata.create_all(bind=engine)
     Base.metadata.create_all(bind=engine)
+    _apply_security_master_provenance_migration(engine)
     _apply_sqlite_compat_migrations(engine)
     _sync_local_security_master(engine)
 

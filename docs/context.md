@@ -1,5 +1,18 @@
 # Context
 
+## 2026-08-18 東証/J-Quants銘柄マスター同期 addendum
+
+- dashboardの`東証全銘柄を同期`は、利用者自身の`JQUANTS_API_KEY`でJ-Quants上場銘柄masterを取得し、git管理外のprivate local DBへ保存します。完全なprovider datasetをpublic repositoryへ同梱・再配布しません。
+- J-Quants個人版の利用者は自身のplan/規約と私的利用等の許諾範囲を確認し、取得データやdata-backed serviceを第三者配信しません。本repositoryはデータ/APIキーを含まないlocal-use codeであり、public hostには別途適切な契約・許諾が必要です。
+- scopeは`source_scope=tse_listed_issues`です。J-Quantsが返す東証上場issueを対象とし、ETF、REIT、優先株等をprovider responseに含まれる限り除外しません。地方取引所単独銘柄を含む国内全取引所網羅は保証しません。
+- 36件の`data/security_master_jp.csv`は初期検索seedです。起動時の不足record insertだけに使い、検索時に暗黙同期せず、J-Quants由来recordを上書きしません。
+- `GET /securities/master/status`は最新complete/current runの`source_as_of`、`synced_at`、complete、ローカル/J-Quants有効件数を返します。`source_as_of`は利用者planにより遅延し得る情報基準日で、同期時刻やリアルタイム時点とは別です。
+- 現行snapshotは本番4,000件以上、単一の非null`source_as_of`を満たし、かつ既存J-Quants有効件数と支配的legacy cohortを合算した基準件数から5%を超えて縮小していない場合だけ適用します。完全な現行snapshotだけが欠落したJ-Quants所有recordをinactiveにし、manual/local-seed/未採用legacy recordは維持します。
+- historical同期は現行active状態と最新complete/current statusを上書きしません。旧importerがprovider基準日を`listed_date`へ誤格納した4,000件以上の支配的legacy cohortを検出した通常UI/API同期はfail closedとし、current CLIの`--adopt-legacy`による明示操作を要求します。
+- numeric普通株の末尾`0`だけを既存4桁identifierへ正規化し、非zero suffixの優先株等と英数字raw codeは別issueとして保持します。ordinary/preferred等のidentity split候補に外部キー参照があれば自動修復せずfail closedとします。code衝突、pagination循環、page上限もfail closed、429 retryは有限です。
+- 銘柄検索は同期済みDBだけを使い、候補表示のためにJ-Quantsへ外部照会しません。connectorのtimeout、network、invalid JSON、HTTP errorはprovider response bodyを除いた安全な分類/statusへ変換します。
+- CLIの`--dry-run`はmaster同期transactionだけをrollbackします。先に実行される`init_db()`のschema初期化・migrationと不足36件seed bootstrapは永続化され得るため、完全に無変更のpreviewではありません。
+
 ## 2026-08-18 銘柄検索・保有入力 addendum
 
 - dashboardの`GET /securities/search`利用箇所は、銘柄名、数字コード、英字を含むコードを案内し、検索結果ごとに`保有入力へ`と`詳細を見る`を分けます。
@@ -38,8 +51,9 @@
 
 ## 2026-04-23 local master addendum
 
-- 銘柄検索は `data/security_master_jp.csv` をローカル正本として `security_master` に同期します。J-Quants V2 `/equities/master` は全上場銘柄検索用の正本で、UI の `銘柄DB更新` は API key が無い場合に失敗として表示します。
-- API key が無い環境でも最低限の日本語検索は動きますが、全上場銘柄を検索対象にするには `JQUANTS_API_KEY` が必要です。
+- `data/security_master_jp.csv`は36件の限定seedです。現行では不足recordだけをinsertし、J-Quants masterを上書きせず、完全な銘柄一覧の正本とは扱いません。
+- J-Quants V2 `/equities/master`は東証/J-Quants listed issues検索用のprovider正本で、UIの現行`東証全銘柄を同期`はAPI key未設定・取得不完全を失敗として表示します。
+- API keyが無い環境でもseed範囲の最低限検索は動きますが、東証/J-Quants listed issues全体を検索対象にするには利用者自身の`JQUANTS_API_KEY`が必要です。
 - Market Overview は `price_daily` にある `1306` / `1321` の価格系列から作ります。dashboard 読み込み時の自動同期は行わず、未取得時は `市場価格更新` ボタンでだけ J-Quants daily bars を試します。
 
 ## 2026-04-23 YouTube / IR addendum
@@ -49,7 +63,7 @@
 ## 2026-04-23 addendum
 
 - portfolio は watchlist 代替ではなくなり、`portfolio_holding` と `/portfolio` API、`/portfolio/import/csv` で保持します。dashboard から手入力で更新できます。
-- 銘柄検索は seed catalog 依存をやめ、`security_master` に同期済みの listed master を前提にした DB-only 検索です。
+- 銘柄検索は seed catalog 依存をやめ、`security_master` に同期済みの listed master を前提にした DB-only 検索です。DB候補が存在する検索中にJ-Quants profile APIを追加呼び出ししません。
 - TDnet は JPX official API connector を追加し、sync job と detail 時の当日 auto sync を持ちます。
 - sector 比較は watchlist 内の雰囲気比較ではなく、`security_master` と `price_daily` から同業全体の breadth を集計して使います。
 - review 画面は `/ui/review` として追加済みです。残る主な強化余地は YouTube / official IR の構造化シグナル強化です。
@@ -76,6 +90,7 @@
   - watchlist 未登録の高スコア候補
   - legacy Portfolio AIの本日/今月の成功review、OpenAI呼出数、残数、概算額
   - 銘柄名・数字/英字コード検索からPortfolio入力またはdetailへ進む導線
+  - 東証/J-Quants銘柄masterの明示同期、完全性、情報基準日、同期時刻、J-Quants/ローカル有効件数
 - `/ui/security/{ticker_code}`
   - 個別銘柄 detail
   - 仮説メモ
@@ -116,5 +131,6 @@
 - 保存済みAI回答の認証・利用者分離・暗号化・保持期限・削除・一覧導線
 - review 画面の正本仕様はまだ別文書に切り出していない
 - portfolioはdashboardの銘柄検索結果から入力フォームへ進める。CSV importの画面導線は未実装
+- 銘柄masterは東証/J-Quants listed issuesが対象で、地方取引所単独銘柄を保証しない。完全なdatasetは各利用者のprivate local DBだけに存在する
 - TDnet connectorと手動・detail時の同期経路は実装済みだが、有料の`TDNET_API_KEY`がない環境では参照リンクだけを利用する
 - 一部 analysis メモは設計意図の保持が主目的で、実装と 1 対 1 ではない

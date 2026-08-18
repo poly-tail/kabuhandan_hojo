@@ -1,8 +1,24 @@
 # Source Call Graph
 
+## 2026-08-18 東証/J-Quants銘柄マスター同期
+
+1. dashboard初期化 -> `GET /securities/master/status` -> `IngestionService.get_security_master_status()` -> 最新`complete=true`かつ`is_current_snapshot=true`の`security_master_sync_run`と現在のactive countを返す
+2. UI -> loading / 未確認 / complete / errorを分離 -> complete時はJ-Quants由来有効件数、ローカル有効件数、`source_as_of`、`synced_at`を表示
+3. `東証全銘柄を同期` -> `POST /securities/master/sync?require_jquants=true` -> `IngestionService.sync_security_master_from_jquants()` -> `JQuantsConnector.fetch_listed_issues()` -> J-Quants V2 `/equities/master`
+4. connector -> 全pagination取得 -> bounded 429 retry -> provider `Date`を`source_as_of`へ分離 -> numeric普通株末尾`0`だけ4桁化、非zero suffix/英数字raw identifierを保持 -> code衝突・pagination循環をfail closed。timeout/network/invalid JSON/HTTP errorはprovider bodyを含まないsafe errorへ変換
+5. service -> 本番4,000件以上と単一の非null`source_as_of`でcurrent完全性を検証 -> 既存J-Quants有効件数 + 支配的legacy cohortの基準から5%を超える縮小を検証 -> どちらかに失敗すればDB変更前に`ConnectorError`
+6. service -> 旧importer由来の4,000件以上の支配的snapshot-date legacy cohortがあれば通常UI/APIを停止してcurrent CLI `--adopt-legacy`を要求 -> ordinary/preferred等のidentity split候補に外部キー参照があれば自動修復せず停止
+7. complete current -> insert/update/reactivate -> 今回集合にない`master_source=jquants`だけdeactivate -> manual/local-seed/未採用legacyを維持 -> `security_master_sync_run`へprovenance/countを保存 -> commit
+8. route -> fetched/inserted/updated/reactivated/deactivated/active/J-Quants active countを返す -> UIがfeedbackとstatusを再描画 -> query入力済みならDB-only検索を再実行（候補ごとのJ-Quants外部callなし）
+9. historical `target_date` / CLI `--as-of` -> current active状態を上書きしない -> 欠落deactivationなし -> latest complete/current statusを置き換えない
+10. key未設定/connector error + `require_jquants=true` -> rollback + HTTP 400。browserへprovider response bodyを返さない。optional APIだけ -> 36件seedをinsert-only -> `source=local_seed` / `complete=false`
+11. browserなし -> `scripts/sync_security_master.py [--dry-run|--as-of|--adopt-legacy]` -> `init_db()`でschema/migration/不足seedを準備 -> 同じservice -> credential/full payloadではなく非secret provenance/countだけをstdoutへ出す。`--dry-run`がrollbackするのは後段のmaster同期transactionで、先行初期化は永続化され得る
+
+完全なdatasetは利用者自身のJ-Quants APIキーでgit管理外のprivate local DBへ保存し、public repositoryへ同梱・再配布しません。scopeはJ-Quantsが返す東証listed issues（ETF、REIT、優先株等を含み得る）で、地方取引所単独銘柄の網羅を保証しません。`source_as_of`はplanにより遅延し得ます。
+
 ## 2026-08-18 銘柄検索から保有入力
 
-1. dashboard検索 -> `GET /securities/search?q=...` -> `WatchlistService.search_candidates()` -> 同期済み`security_master`のcode/name検索
+1. dashboard検索 -> `GET /securities/search?q=...` -> `WatchlistService.search_candidates()` -> 同期済み`security_master`のcode/nameをDB-only検索。DB候補の表示中にJ-Quants profile APIを呼ばない
 2. search response -> dashboardで英字5文字末尾`0`のraw codeを公開4文字へ表示変換。`詳細を見る`はraw codeを維持してdetailを開く
 3. `保有入力へ` -> 公開codeをPortfolio formへprefill -> formへscroll -> quantityへfocus。ここではAPIを呼ばず保存しない
 4. 利用者がquantityを入力して`保有を保存` -> `POST /portfolio` -> `PortfolioService.upsert_item()`
@@ -77,8 +93,8 @@ quotaの`review_runs`は銘柄数ではなく成功した一括review数です�
 
 ## 2026-04-23 local master addendum
 
-1. app startup / search / `/securities/master/sync` -> `LocalSecurityMasterCatalog.sync_to_db()` -> `security_master`
-2. dashboard `銘柄DB更新` button -> `POST /securities/master/sync?require_jquants=true` -> local CSV sync plus required J-Quants V2 `/equities/master` sync
+1. app startup -> `LocalSecurityMasterCatalog.sync_to_db()` -> 36件seedの不足recordだけを`security_master`へinsert。検索操作では暗黙同期しない
+2. dashboard現行`東証全銘柄を同期` button -> `POST /securities/master/sync?require_jquants=true` -> required J-Quants V2 `/equities/master` complete/current sync
 3. dashboard `市場価格更新` button -> `POST /securities/1306/prices/sync?lookback_days=60` and `POST /securities/1321/prices/sync?lookback_days=60` -> J-Quants daily bars -> `price_daily`
 
 ## 2026-04-23 YouTube / IR addendum

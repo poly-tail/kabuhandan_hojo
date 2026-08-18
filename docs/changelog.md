@@ -1,5 +1,22 @@
 # Changelog
 
+## 2026-08-18 TSE / J-Quants listed-issue master sync safety
+
+- `GET /securities/master/status`を追加し、最新complete/current J-Quants同期のscope、情報基準日、同期時刻、完全性、ローカル/J-Quants有効件数をcredentialなしで確認できるようにした。
+- `POST /securities/master/sync`を拡張し、取得、新規、更新、再有効化、無効化を分離したresponseへ変更した。`processed_count`はupsert件数とし、seedとJ-Quants件数を重複加算しない。
+- current snapshotに本番4,000件の完全性floorと単一`source_as_of`検査を追加した。既存J-Quants有効件数と支配的legacy cohortを合算した基準件数から5%を超える縮小もDB変更前に拒否する。不完全・空・基準日不整合ではDBを変更せず、complete currentだけが欠落したJ-Quants所有recordをinactiveへ変更する。manual/local-seed/未採用legacyは維持する。
+- historical同期はcurrent active状態と最新complete/current statusを上書きせず、新規historical recordをinactiveとして扱い、欠落deactivationを行わないようにした。
+- `security_master`へ`master_source`、`source_as_of`、`last_seen_sync_id`を追加し、`security_master_sync_run`へ非secret provenanceと集計件数を保存するようにした。SQLite/PostgreSQLの既存DB初期化でも列/tableを追加する。
+- J-Quants master codeはnumeric 5桁末尾`0`の普通株だけを4桁化し、非zero suffixの優先株等と英数字raw identifierを保持するようにした。異なるraw codeの正規化衝突はsilent overwriteせず失敗し、ordinary/preferred等のidentity split候補に外部キー参照がある場合は自動修復せずfail closedにした。
+- provider `Date`を`source_as_of`へ分離し、明示的なlisting-date fieldだけを`listed_date`へ保存するようにした。pagination循環/page上限のguardと、`Retry-After`対応のbounded 429 retryを追加した。timeout/network/invalid JSON/HTTP errorをsafeな`ConnectorError`へ変換し、provider response bodyをAPI/browser errorから除外した。
+- bundled 36件seedをinsert-onlyへ変更し、J-Quants recordを上書きしないようにした。検索操作からseed同期副作用を除いた。
+- 英数字ticker/local code検索をcase-insensitiveなDB-only処理にし、ticker/local exact、各prefix、name、marketの既存priorityを明示した。優先株等は登録済みprimary identifierのまま返し、検索候補のprofile取得でJ-Quantsを外部callしない。
+- dashboardのbuttonを`東証全銘柄を同期`へ変更し、未確認/complete/error、情報基準日、同期時刻、J-Quants/ローカル件数と各変更件数を表示するようにした。required同期失敗をseed fallbackで成功表示しない。
+- `scripts/sync_security_master.py`を追加し、browserなしでcurrent/historical/dry-runを実行し、旧provenanceなしrecordのJ-Quants所有権は`--adopt-legacy`でだけ明示採用できるようにした。旧importer由来の4,000件以上の支配的snapshot-date cohortがある通常UI/API同期はDB変更前に停止し、明示採用を要求する。`--dry-run`は同期transactionをrollbackするが、先行する`init_db()`のschema初期化・migrationと不足36件seed bootstrapは永続化され得る。
+- 完全なdatasetは利用者自身のJ-Quants APIキーでgit管理外のprivate local DBへ同期し、public repositoryへ同梱・再配布しない。scopeは東証/J-Quants listed issuesでETF、REIT、優先株等を含み得るが、地方取引所単独銘柄を保証しない。`source_as_of`はplanにより遅延し得る。
+- J-Quants個人版の私的利用等の契約条件、取得データ/data-backed serviceの第三者配信禁止、public hostには別途契約・許諾が必要というlocal-use境界をREADMEと要件へ追加した。
+- 要件 v1.7、API v2.0、画面 v2.2と`SC-2026-08-18-02`を追加し、旧versioned文書を変更せず現行baselineを更新した。
+
 ## 2026-08-18 security search to portfolio input
 
 - dashboardの検索案内を銘柄名・数字/英字コード対応へ改め、各結果へ`保有入力へ`と`詳細を見る`を追加した。

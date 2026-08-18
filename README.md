@@ -1,12 +1,25 @@
 # kabuhandan_hojo Phase 0-2
 
+## 2026-08-18 東証/J-Quants銘柄マスター同期
+
+- dashboardの`東証全銘柄を同期`は、利用者自身の`JQUANTS_API_KEY`でJ-Quants上場銘柄マスターを取得し、git管理外のローカルDBへ保存します。取得した完全な一覧をこのpublic repositoryへ同梱・再配布しません。
+- J-Quants個人版は個人の私的利用等の契約条件があります。利用者は自身のplanと[J-Quants利用規約](https://jpx-jquants.com/termsofservice)を確認し、取得データそのものの第三者配信や、そのデータを使ったserviceの第三者提供を行わないでください。本repositoryはデータとAPIキーを含まないlocal-use codeだけを公開しており、public hostや第三者向け運用には別途適切な契約・許諾が必要です。
+- 対象はJ-Quantsが返す東証上場issueです。普通株に加えてETF、REIT、優先株等もprovider responseに含まれる限り同期しますが、名古屋・福岡・札幌等の地方取引所単独銘柄を含む「国内全取引所の全銘柄」は保証しません。
+- bundled `data/security_master_jp.csv`は36件の初期検索seedだけです。seedは不足recordのinsertに限定され、既存J-Quants recordを上書きせず、全件同期済みとは扱いません。
+- dashboardは完全/未確認status、J-Quants由来/ローカル有効件数、情報基準日`source_as_of`、同期時刻を表示します。`source_as_of`は利用者のJ-Quants planに応じて遅延し得るため、同期時刻やリアルタイム時点とは区別してください。
+- 完全な現行snapshotは、本番では4,000件以上かつ全recordの`source_as_of`が1日へ一致する必要があります。さらに、既存のJ-Quants有効件数と旧importer由来の支配的legacy cohortを足した基準件数から5%を超えて縮小する取得は、DB変更前に拒否します。検証を通った現行snapshotだけが今回集合にないJ-Quants所有recordをinactiveへ変更し、historical同期は現行status/active状態を上書きしません。
+- 旧importerがproviderの`Date`を`listed_date`へ誤格納した4,000件以上の支配的legacy cohortを検出した場合、通常のdashboard/API同期はDB変更前に停止します。内容を確認した上でcurrent snapshotに`python scripts/sync_security_master.py --adopt-legacy`を明示指定してください。
+- 5桁numeric普通株の末尾`0`は既存4桁identifierへ正規化しますが、非zero suffixの優先株等と英数字raw identifierは別issueとして保持します。ordinary/preferred等のidentity split候補にwatchlist、保有、価格等の外部キー参照があれば自動修復せず同期全体を拒否します。pagination循環・code衝突はfail closed、429は有限回だけ再試行します。
+- 銘柄検索は同期済みローカルDBだけを読み、検索候補ごとのJ-Quants外部照会を行いません。J-Quantsのtimeout、network、invalid JSON、HTTP errorは安全な分類またはstatusだけを表示し、provider response bodyやAPIキーをbrowserへ返しません。
+- `python scripts/sync_security_master.py --dry-run`はJ-Quants同期transactionをrollbackしますが、実行前の`init_db()`によるschema初期化・migrationと、不足している36件seedのbootstrapは先に永続化され得ます。完全に無変更のpreviewではありません。
+
 ## 2026-08-18 銘柄検索から保有入力
 
 - dashboardの銘柄検索は、銘柄名、数字コード、英字を含むコードに対応します。たとえば`キオクシア`または公開コード`285A`で、同期済みmasterのキオクシアホールディングスを検索できます。
 - 各検索結果に`保有入力へ`と`詳細を見る`を表示します。`保有入力へ`はPortfolio panelへ銘柄コードを入れて数量欄へ移動するだけで、自動保存しません。数量を入力し、必要なら平均取得単価・メモを追加してから`保有を保存`を押してください。
 - J-Quants masterが英字を含むコードを末尾`0`付きraw identifier（例:`285A0`）で保持している場合、検索結果の表示と保有入力は公開コード`285A`にします。詳細画面は登録済みmasterを開くためraw identifierを維持します。
 - `POST /portfolio`は公開4文字コード`285A`を、一意な既存raw master`285A0`へ解決します。これにより`285A`という別placeholder masterの重複作成を防ぎます。既存の5文字identifier入力も引き続き利用できます。
-- キオクシアが検索結果へ出ない環境では、dashboardの`銘柄DB更新`でJ-Quants全上場masterを同期してください。全件同期には`JQUANTS_API_KEY`が必要です。
+- キオクシアが検索結果へ出ない環境では、dashboardの`東証全銘柄を同期`でJ-Quants上場masterを同期してください。同期には利用者自身の`JQUANTS_API_KEY`が必要です。
 
 ## 2026-08-17 legacy AI利用量・概算額
 
@@ -40,7 +53,7 @@
 
 ## 2026-08-18 仕様baseline更新
 
-- 現行正本を要件 v1.6、API v1.9、画面 v2.1へ更新し、銘柄名・数字/英字コード検索、検索結果から保有入力への非保存導線、4文字公開コードから一意なJ-Quants raw identifierへのportfolio alias解決を反映しました。v1.5 / v1.8 / v2.0までのAI・usage契約も累積継承します。
+- 現行正本を要件 v1.7、API v2.0、画面 v2.2へ更新し、BYOKによる東証/J-Quants上場issueのprivate local full sync、status/provenance/count、完全な現行snapshotだけの安全なdeactivationを反映しました。v1.6 / v1.9 / v2.1までの検索・Portfolio・AI・usage契約も累積継承します。
 - 仕様版の対応、変更理由、互換性、非対象、既知制約は `docs/spec_change_history.md` で追跡します。
 - 旧versioned文書とlegacy AI endpointは履歴・互換機能として保持しています。
 
@@ -96,9 +109,9 @@
 
 ## 2026-04-23 local master addendum
 
-- 銘柄検索は `data/security_master_jp.csv` のローカル日本語銘柄マスタを起動時と検索時に `security_master` へ同期します。
-- dashboard の銘柄検索欄に `銘柄DB更新` ボタンを追加しました。UI からの更新は `POST /securities/master/sync?require_jquants=true` を叩き、J-Quants V2 `/equities/master` から全上場銘柄を取得できない場合は失敗として表示します。
-- `JQUANTS_API_KEY` が無い環境でもローカルCSVの最低限検索は動きますが、全上場銘柄検索には `.env` または起動環境の `JQUANTS_API_KEY` が必要です。
+- `data/security_master_jp.csv`は36件のローカル日本語検索seedとして追加されました。現行実装では起動時に不足recordだけをinsertし、検索操作で暗黙同期せず、J-Quants metadataを上書きしません。
+- dashboardの現行buttonは`東証全銘柄を同期`です。`POST /securities/master/sync?require_jquants=true`を呼び、J-Quants V2 `/equities/master`から完全な現行snapshotを取得できない場合は失敗として表示します。
+- `JQUANTS_API_KEY`が無い環境でも36件seedの最低限検索は動きますが、東証/J-Quants listed issuesを検索対象にするには`.env`または起動環境へ利用者自身のkeyを設定してください。
 - Market Overview は `price_daily` の `1306` と `1321` を見ます。空の場合に dashboard 読み込みで自動同期は行わず、`市場価格更新` ボタンから J-Quants の `equities/bars/daily` を明示実行します。
 - dashboard の Market Overview に `市場価格更新` ボタンを追加し、`1306` / `1321` の価格同期を必要時だけ手動で試せるようにしました。市場proxy の lookback は 60 日です。
 
@@ -209,6 +222,31 @@ python scripts/run_api.py --reload
 - 価格データが不足していて `JQUANTS_API_KEY` がある場合、UI 用の `price_chart` 取得時に J-Quants の日足同期を 1 回試します。
 - それでも取得できない項目は、mock 補完せず `未取得` または空表示にします。
 
+### 東証銘柄マスターを同期する
+
+通常はdashboardの`東証全銘柄を同期`を使います。APIを直接確認する場合は次を実行します。
+
+```bash
+curl http://127.0.0.1:8000/securities/master/status
+curl -X POST "http://127.0.0.1:8000/securities/master/sync?require_jquants=true"
+```
+
+browserを介さず運用確認する場合は次を使えます。出力はcredentialや銘柄全件ではなく、非secret provenanceと集計件数だけです。
+
+```bash
+python scripts/sync_security_master.py --dry-run
+python scripts/sync_security_master.py
+```
+
+旧importでsource未記録のrecordをJ-Quants所有として明示採用する必要がある場合だけ、current snapshotへ`--adopt-legacy`を指定します。historical `--as-of YYYY-MM-DD`との同時指定はできません。
+
+```bash
+python scripts/sync_security_master.py --adopt-legacy --dry-run
+python scripts/sync_security_master.py --as-of 2026-05-26 --dry-run
+```
+
+完全なprovider datasetは`data/`配下のローカルDBにだけ保持され、`.gitignore`で追跡対象外です。CSVへ書き出してpublic repositoryへ追加しないでください。
+
 ### mock mode
 
 ```bash
@@ -241,8 +279,10 @@ python scripts/run_api.py --reload --mock
 - `DELETE /portfolio/{ticker_code}`
 - `GET /securities/search`
 - `POST /sources/bootstrap`
+- `GET /securities/master/status`
+  - 最新の完全な現行J-Quants同期について、scope、情報基準日、同期時刻、完全性、ローカル/J-Quants有効件数を返します。APIキーや銘柄全件は返しません。
 - `POST /securities/master/sync`
-  - UI の `銘柄DB更新` は `require_jquants=true` を付け、J-Quants V2 `/equities/master` の全件取得を必須にします。
+  - UIの`東証全銘柄を同期`は`require_jquants=true`を付け、J-Quants V2 `/equities/master`の完全な現行snapshotを必須にします。取得・新規・更新・再有効化・無効化を別countで返します。
 - `POST /securities`
 - `POST /securities/{ticker_code}/prices`
 - `POST /securities/{ticker_code}/prices/sync`
@@ -264,7 +304,7 @@ python scripts/run_api.py --reload --mock
 
 ### 2026-04-23 addendum
 
-- 銘柄検索は seed catalog 依存をやめ、`POST /securities/master/sync` で J-Quants の listed master を `security_master` に同期してから DB-only で検索します。
+- 銘柄検索はDB-onlyです。36件seedは不足recordの初期insertだけに使い、全体検索には`POST /securities/master/sync`でJ-Quants listed masterをprivate local DBへ同期します。
 - portfolio panel は watchlist 代替ではなく、`/portfolio` API と dashboard 内の手入力フォーム、`/portfolio/import/csv` で保持します。
 - detail の信用需給は `flow` が空のとき J-Quants margin data を試行し、取得できれば `FlowSnapshot` を補完します。
 - TDnet は JPX の official paid API connector を追加し、`POST /documents/sync/tdnet` で event 化できます。detail では `TDNET_API_KEY` があると当日分の自動同期も試行します。

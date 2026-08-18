@@ -2,16 +2,25 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict
-from datetime import date, datetime, timedelta
+from collections import Counter
+from dataclasses import asdict, dataclass
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 import hashlib
+from math import ceil
 from urllib.parse import urlparse
+from uuid import uuid4
 
-from sqlalchemy import select
+from sqlalchemy import func, inspect as sa_inspect, select, text
 from sqlalchemy.orm import Session
 
-from kabuhandan_hojo.connectors.base import DailyBarRecord, DocumentRecord, ListedIssueRecord, MarginSnapshotRecord
+from kabuhandan_hojo.connectors.base import (
+    ConnectorError,
+    DailyBarRecord,
+    DocumentRecord,
+    ListedIssueRecord,
+    MarginSnapshotRecord,
+)
 from kabuhandan_hojo.core.container import ServiceContainer
 from kabuhandan_hojo.models.entities import (
     EventFact,
@@ -21,6 +30,7 @@ from kabuhandan_hojo.models.entities import (
     RawDocument,
     ScoreDaily,
     SecurityMaster,
+    SecurityMasterSyncRun,
     SourceRegistry,
     TechnicalFeatureDaily,
     VideoItem,
@@ -31,11 +41,63 @@ from kabuhandan_hojo.schemas.events import AllowlistedIrDocumentCreate, RawDocum
 from kabuhandan_hojo.schemas.securities import FinancialSnapshotCreate, FlowSnapshotCreate, PriceBarCreate, SecurityCreate
 
 
+JQUANTS_MASTER_SOURCE = "jquants"
+JQUANTS_MASTER_SCOPE = "tse_listed_issues"
+DEFAULT_MIN_COMPLETE_MASTER_RECORDS = 4_000
+MAX_COMPLETE_MASTER_SHRINK_RATIO = 0.05
+
+
+@dataclass(frozen=True, slots=True)
+class SecurityMasterSyncResult:
+    fetched_count: int
+    inserted_count: int
+    updated_count: int
+    reactivated_count: int
+    deactivated_count: int
+    active_total: int
+    jquants_active_count: int
+    source: str
+    source_scope: str
+    source_as_of: date | None
+    sync_id: str
+    synced_at: datetime
+    complete: bool
+    is_current_snapshot: bool
+    adopted_legacy_count: int = 0
+
+    @property
+    def upserted_count(self) -> int:
+        return self.inserted_count + self.updated_count
+
+
+@dataclass(frozen=True, slots=True)
+class SecurityMasterSyncStatus:
+    active_total: int
+    jquants_active_count: int
+    source: str
+    source_scope: str
+    source_as_of: date | None
+    sync_id: str | None
+    synced_at: datetime | None
+    complete: bool
+
+
 class IngestionService:
     """Persist raw data, derived features, and scores."""
 
-    def __init__(self, container: ServiceContainer) -> None:
+    def __init__(
+        self,
+        container: ServiceContainer,
+        *,
+        minimum_complete_master_records: int = DEFAULT_MIN_COMPLETE_MASTER_RECORDS,
+        maximum_complete_master_shrink_ratio: float = MAX_COMPLETE_MASTER_SHRINK_RATIO,
+    ) -> None:
         self.container = container
+        self.minimum_complete_master_records = max(1, minimum_complete_master_records)
+        self.maximum_complete_master_shrink_ratio = min(
+            max(maximum_complete_master_shrink_ratio, 0.0),
+            1.0,
+        )
 
     def bootstrap_source_registry(self, session: Session, *, ir_allowlist_domains: list[str]) -> None:
         sources = [
@@ -109,6 +171,7 @@ class IngestionService:
                 market=payload.market,
                 industry_17=payload.industry_17,
                 industry_33=payload.industry_33,
+                master_source="manual",
             )
             session.add(security)
         else:
@@ -117,6 +180,9 @@ class IngestionService:
             security.market = payload.market
             security.industry_17 = payload.industry_17
             security.industry_33 = payload.industry_33
+            security.master_source = "manual"
+            security.source_as_of = None
+            security.last_seen_sync_id = None
         session.flush()
         return security
 
@@ -229,14 +295,194 @@ class IngestionService:
         session: Session,
         *,
         as_of: date | None = None,
-    ) -> int:
+        adopt_legacy: bool = False,
+    ) -> SecurityMasterSyncResult:
+        """Apply one fully fetched J-Quants snapshot without guessing legacy ownership."""
+
         listed_issues = await self.container.jquants_connector.fetch_listed_issues(as_of=as_of)
-        processed_count = 0
+        sync_id = str(uuid4())
+        synced_at = datetime.now(timezone.utc)
+        fetched_count = len(listed_issues)
+        source_dates = {issue.source_as_of for issue in listed_issues if issue.source_as_of is not None}
+        source_as_of = next(iter(source_dates)) if len(source_dates) == 1 else None
+        current_snapshot = as_of is None
+        complete = (
+            fetched_count >= self.minimum_complete_master_records
+            and len(source_dates) == 1
+            and all(issue.source_as_of == source_as_of for issue in listed_issues)
+            and (as_of is None or source_as_of == as_of)
+        )
+
+        if fetched_count and len(source_dates) > 1:
+            raise ConnectorError("J-Quants listed master returned inconsistent source dates.")
+        if current_snapshot and not complete:
+            raise ConnectorError(
+                "J-Quants current listed master was incomplete; no local master changes were applied."
+            )
+
+        existing_by_ticker = {
+            security.ticker_code: security
+            for security in session.scalars(select(SecurityMaster)).all()
+        }
+        legacy_snapshot_date, legacy_snapshot_count = self._dominant_legacy_snapshot_cohort(
+            existing_by_ticker.values()
+        )
+        if complete and current_snapshot:
+            explicit_jquants_active_count = sum(
+                1
+                for security in existing_by_ticker.values()
+                if security.master_source == JQUANTS_MASTER_SOURCE and security.is_active
+            )
+            previous_provider_count = explicit_jquants_active_count + legacy_snapshot_count
+            minimum_safe_count = ceil(
+                previous_provider_count * (1.0 - self.maximum_complete_master_shrink_ratio)
+            )
+            if previous_provider_count and fetched_count < minimum_safe_count:
+                raise ConnectorError(
+                    "J-Quants current listed master shrank beyond the safe threshold; "
+                    "no local master changes were applied."
+                )
+            if legacy_snapshot_date is not None and not adopt_legacy:
+                raise ConnectorError(
+                    "A legacy J-Quants snapshot-date cohort requires explicit reconciliation; "
+                    "run scripts/sync_security_master.py --adopt-legacy first."
+                )
+            self._assert_no_referenced_code_collisions(
+                session,
+                existing_by_ticker=existing_by_ticker,
+                listed_issues=listed_issues,
+            )
+        inserted_count = 0
+        updated_count = 0
+        reactivated_count = 0
+        fetched_tickers: set[str] = set()
         for issue in listed_issues:
-            self._upsert_listed_issue(session, issue)
-            processed_count += 1
+            fetched_tickers.add(issue.ticker_code)
+            existing = existing_by_ticker.get(issue.ticker_code)
+            if existing is None:
+                existing = self._upsert_listed_issue(
+                    session,
+                    issue,
+                    sync_id=sync_id,
+                    activate=current_snapshot,
+                )
+                existing_by_ticker[issue.ticker_code] = existing
+                inserted_count += 1
+                continue
+
+            was_active = existing.is_active
+            if (
+                legacy_snapshot_date is not None
+                and existing.master_source == "legacy"
+                and existing.listed_date == legacy_snapshot_date
+                and issue.listed_date is None
+            ):
+                existing.listed_date = None
+            self._upsert_listed_issue(
+                session,
+                issue,
+                sync_id=sync_id,
+                activate=current_snapshot,
+            )
+            updated_count += 1
+            if current_snapshot and not was_active and existing.is_active:
+                reactivated_count += 1
+
+        adopted_legacy_count = 0
+        if complete and current_snapshot and adopt_legacy and legacy_snapshot_date is not None:
+            for security in existing_by_ticker.values():
+                if security.master_source != "legacy":
+                    continue
+                if security.listed_date != legacy_snapshot_date:
+                    continue
+                security.listed_date = None
+                security.master_source = JQUANTS_MASTER_SOURCE
+                adopted_legacy_count += 1
+
+        deactivated_count = 0
+        if complete and current_snapshot:
+            for security in existing_by_ticker.values():
+                if security.master_source != JQUANTS_MASTER_SOURCE:
+                    continue
+                if security.ticker_code in fetched_tickers or not security.is_active:
+                    continue
+                security.is_active = False
+                deactivated_count += 1
+
         session.flush()
-        return processed_count
+        active_total, jquants_active_count = self._security_master_counts(session)
+        run = SecurityMasterSyncRun(
+            sync_id=sync_id,
+            source=JQUANTS_MASTER_SOURCE,
+            source_scope=JQUANTS_MASTER_SCOPE,
+            source_as_of=source_as_of or as_of,
+            synced_at=synced_at,
+            complete=complete,
+            is_current_snapshot=current_snapshot,
+            fetched_count=fetched_count,
+            inserted_count=inserted_count,
+            updated_count=updated_count,
+            reactivated_count=reactivated_count,
+            deactivated_count=deactivated_count,
+            active_total=active_total,
+            jquants_active_count=jquants_active_count,
+            adopted_legacy_count=adopted_legacy_count,
+        )
+        session.add(run)
+        session.flush()
+        return SecurityMasterSyncResult(
+            fetched_count=fetched_count,
+            inserted_count=inserted_count,
+            updated_count=updated_count,
+            reactivated_count=reactivated_count,
+            deactivated_count=deactivated_count,
+            active_total=active_total,
+            jquants_active_count=jquants_active_count,
+            source=JQUANTS_MASTER_SOURCE,
+            source_scope=JQUANTS_MASTER_SCOPE,
+            source_as_of=source_as_of or as_of,
+            sync_id=sync_id,
+            synced_at=synced_at,
+            complete=complete,
+            is_current_snapshot=current_snapshot,
+            adopted_legacy_count=adopted_legacy_count,
+        )
+
+    def get_security_master_status(self, session: Session) -> SecurityMasterSyncStatus:
+        """Return persisted sync provenance plus current active counts."""
+
+        active_total, jquants_active_count = self._security_master_counts(session)
+        run = session.scalar(
+            select(SecurityMasterSyncRun)
+            .where(
+                SecurityMasterSyncRun.source == JQUANTS_MASTER_SOURCE,
+                SecurityMasterSyncRun.complete.is_(True),
+                SecurityMasterSyncRun.is_current_snapshot.is_(True),
+            )
+            .order_by(SecurityMasterSyncRun.synced_at.desc())
+            .limit(1)
+        )
+        if run is None:
+            return SecurityMasterSyncStatus(
+                active_total=active_total,
+                jquants_active_count=jquants_active_count,
+                source=JQUANTS_MASTER_SOURCE,
+                source_scope=JQUANTS_MASTER_SCOPE,
+                source_as_of=None,
+                sync_id=None,
+                synced_at=None,
+                complete=False,
+            )
+        return SecurityMasterSyncStatus(
+            active_total=active_total,
+            jquants_active_count=jquants_active_count,
+            source=run.source,
+            source_scope=run.source_scope,
+            source_as_of=run.source_as_of,
+            sync_id=run.sync_id,
+            synced_at=run.synced_at,
+            complete=run.complete,
+        )
 
     async def sync_flow_from_jquants(
         self,
@@ -590,6 +836,7 @@ class IngestionService:
                     market=None,
                     industry_17=None,
                     industry_33=None,
+                    master_source="manual",
                 )
             )
             session.flush()
@@ -613,7 +860,14 @@ class IngestionService:
             source_name=payload["source_name"],
         )
 
-    def _upsert_listed_issue(self, session: Session, issue: ListedIssueRecord) -> SecurityMaster:
+    def _upsert_listed_issue(
+        self,
+        session: Session,
+        issue: ListedIssueRecord,
+        *,
+        sync_id: str,
+        activate: bool,
+    ) -> SecurityMaster:
         security = session.get(SecurityMaster, issue.ticker_code)
         if security is None:
             security = SecurityMaster(
@@ -625,7 +879,10 @@ class IngestionService:
                 industry_17=issue.industry_17,
                 industry_33=issue.industry_33,
                 listed_date=issue.listed_date,
-                is_active=issue.is_active,
+                is_active=issue.is_active if activate else False,
+                master_source=JQUANTS_MASTER_SOURCE,
+                source_as_of=issue.source_as_of,
+                last_seen_sync_id=sync_id,
             )
             session.add(security)
             return security
@@ -638,8 +895,127 @@ class IngestionService:
         security.industry_17 = issue.industry_17 or security.industry_17
         security.industry_33 = issue.industry_33 or security.industry_33
         security.listed_date = issue.listed_date or security.listed_date
-        security.is_active = issue.is_active
+        if activate:
+            security.is_active = issue.is_active
+        security.master_source = JQUANTS_MASTER_SOURCE
+        security.source_as_of = issue.source_as_of
+        security.last_seen_sync_id = sync_id
         return security
+
+    def _security_master_counts(self, session: Session) -> tuple[int, int]:
+        active_total = int(
+            session.scalar(
+                select(func.count()).select_from(SecurityMaster).where(SecurityMaster.is_active.is_(True))
+            )
+            or 0
+        )
+        jquants_active_count = int(
+            session.scalar(
+                select(func.count())
+                .select_from(SecurityMaster)
+                .where(
+                    SecurityMaster.is_active.is_(True),
+                    SecurityMaster.master_source == JQUANTS_MASTER_SOURCE,
+                )
+            )
+            or 0
+        )
+        return active_total, jquants_active_count
+
+    def _dominant_legacy_snapshot_cohort(self, securities) -> tuple[date | None, int]:
+        """Identify the old importer bug only when explicitly reconciling legacy rows.
+
+        A real listing date cannot plausibly be shared by a full-market-sized
+        cohort.  The former importer copied the J-Quants snapshot ``Date`` into
+        ``listed_date`` for thousands of rows.  Requiring at least the same
+        completeness threshold makes this repair conservative and keeps genuine
+        dates on manual/local-seed rows untouched.
+        """
+
+        counts = Counter(
+            security.listed_date
+            for security in securities
+            if (
+                security.master_source == "legacy"
+                and security.is_active
+                and security.listed_date is not None
+            )
+        )
+        if not counts:
+            return None, 0
+        candidate, count = counts.most_common(1)[0]
+        if count < self.minimum_complete_master_records:
+            return None, 0
+        return candidate, count
+
+    def _assert_no_referenced_code_collisions(
+        self,
+        session: Session,
+        *,
+        existing_by_ticker: dict[str, SecurityMaster],
+        listed_issues: list[ListedIssueRecord],
+    ) -> None:
+        """Fail before changing a row whose old issue identity is referenced.
+
+        A previous partial synchronization may already have relabelled the
+        legacy row as J-Quants-owned, so provenance is deliberately not used as
+        a safety condition here.
+        """
+
+        fetched_by_ticker = {issue.ticker_code: issue for issue in listed_issues}
+        collision_tickers: list[str] = []
+        for issue in listed_issues:
+            existing = existing_by_ticker.get(issue.ticker_code)
+            if existing is None:
+                continue
+            old_local_code = (existing.local_code or "").strip().upper()
+            new_local_code = (issue.local_code or issue.ticker_code).strip().upper()
+            if not old_local_code or old_local_code == new_local_code:
+                continue
+            displaced_issue = fetched_by_ticker.get(old_local_code)
+            if displaced_issue is None:
+                continue
+            displaced_local_code = (displaced_issue.local_code or displaced_issue.ticker_code).strip().upper()
+            if displaced_local_code != old_local_code:
+                continue
+            collision_tickers.append(issue.ticker_code)
+
+        for ticker_code in collision_tickers:
+            dependent_count = self._security_master_reference_count(session, ticker_code)
+            if dependent_count:
+                raise ConnectorError(
+                    "A normalized-code collision has dependent records and requires "
+                    "explicit identity reconciliation before the master can be synchronized."
+                )
+
+    @staticmethod
+    def _security_master_reference_count(session: Session, ticker_code: str) -> int:
+        # Reflect through the session's live connection.  Inspecting the
+        # Engine can open/close a second connection; with SQLite StaticPool that
+        # can roll back the transaction currently owned by this Session.
+        connection = session.connection()
+        inspector = sa_inspect(connection)
+        preparer = connection.dialect.identifier_preparer
+        schema = inspector.default_schema_name
+        total = 0
+        for table_name in inspector.get_table_names(schema=schema):
+            for foreign_key in inspector.get_foreign_keys(table_name, schema=schema):
+                if foreign_key.get("referred_table") != SecurityMaster.__tablename__:
+                    continue
+                constrained_columns = foreign_key.get("constrained_columns") or []
+                referred_columns = foreign_key.get("referred_columns") or []
+                for constrained_column, referred_column in zip(constrained_columns, referred_columns):
+                    if referred_column != "ticker_code":
+                        continue
+                    quoted_table = preparer.quote(table_name)
+                    if schema:
+                        quoted_table = f"{preparer.quote(schema)}.{quoted_table}"
+                    quoted_column = preparer.quote(constrained_column)
+                    statement = text(
+                        f"SELECT COUNT(*) FROM {quoted_table} WHERE {quoted_column} = :ticker_code"
+                    )
+                    total += int(session.execute(statement, {"ticker_code": ticker_code}).scalar_one())
+        return total
 
     def _coerce_flow_payload(
         self,

@@ -55,6 +55,8 @@ class PortfolioService:
                 industry_33=profile.industry_33 if profile is not None else None,
                 listed_date=profile.listed_date if profile is not None else None,
                 is_active=True,
+                source_as_of=profile.source_as_of if profile is not None else None,
+                master_source="manual",
             )
             db.add(security)
             db.flush()

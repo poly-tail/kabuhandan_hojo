@@ -91,6 +91,14 @@ def test_dashboard_ui_shells_are_served(monkeypatch: pytest.MonkeyPatch) -> None
     assert "/dashboard" in top_response.text
     assert "/securities/search?q=" in top_response.text
     assert "security-master-sync-button" in top_response.text
+    assert "東証全銘柄を同期" in top_response.text
+    assert 'id="security-master-status"' in top_response.text
+    assert 'fetchJson("/securities/master/status")' in top_response.text
+    assert "情報基準日 ${sourceAsOf}" in top_response.text
+    assert "J-Quants ${jquantsCount}件" in top_response.text
+    assert "東証全件同期は未確認です。ローカル有効銘柄 ${activeTotal}件。" in top_response.text
+    assert "同期状態を取得できませんでした" in top_response.text
+    assert "全日本銘柄" not in top_response.text
     assert "market-proxy-sync-button" in top_response.text
     assert 'data-manual-update="watchlist-scores"' in top_response.text
     assert 'data-manual-update="portfolio-prices"' in top_response.text
@@ -124,6 +132,10 @@ def test_dashboard_ui_shells_are_served(monkeypatch: pytest.MonkeyPatch) -> None
     assert "const formatManualError = (error) => {" in top_response.text
     assert "JQUANTS_API_KEY" in top_response.text
     assert "/securities/master/sync?require_jquants=true" in top_response.text
+    assert "const syncSecurityMaster = async" not in top_response.text
+    assert "東証全銘柄を同期しました。検索結果も再取得しました。" not in top_response.text
+    assert 'kind === "security-master"' in top_response.text
+    assert "J-Quantsから東証全銘柄を同期しています..." in top_response.text
     assert "zeroIsError: true" in top_response.text
     assert "Manual Refresh" not in top_response.text
     assert "/screening?min_total_score=60" in top_response.text
@@ -190,7 +202,7 @@ def test_dashboard_stock_ai_usage_ui_is_persistent_safe_and_refreshed(
     assert "正式な請求額ではありません" in html
     assert "OpenAI PlatformのUsage Dashboardを正本" in html
     assert 'fetchJson("/api/ai/stock-review/usage")' in html
-    assert "await Promise.all([loadDashboard(null), loadStockAiUsage()]);" in html
+    assert "await Promise.all([loadDashboard(null), loadStockAiUsage(), loadSecurityMasterStatus()]);" in html
     assert html.count("await loadStockAiUsage();") >= 2
     assert "今回の事前概算" in html
     assert "includeWebSearch ? 0.01 * webCalls : 0" in html

@@ -1,6 +1,6 @@
 # Screen Spec Current
 
-> 現在の正本: `screen_spec_v2.1.md`
+> 現在の正本: `screen_spec_v2.2.md`
 
 ## 概要
 
@@ -9,15 +9,21 @@
 
 ## 現在値
 
-- 画面仕様書: v2.1
+- 画面仕様書: v2.2
 - 更新日: 2026-08-18
-- 変更概要: 銘柄検索結果の`保有入力へ`/`詳細を見る`、公開code表示・prefill、数量focusと非自動保存を追加
+- 変更概要: dashboardの`東証全銘柄を同期`、4,000件/5%縮小・legacy/FK保護、完全/未確認status、情報基準日・同期時刻・各件数feedbackを追加
 
 ## 主な変更点
 
 - UI 5画面構成と独立URL `GET /ui/analysis`
 - dashboardで銘柄名・数字/英字codeを検索し、結果からPortfolio入力またはdetailへ進む導線
 - 英字5文字末尾`0`は表示・保有入力だけ公開4文字とし、detail actionはraw identifierを維持
+- `東証全銘柄を同期`のrequired J-Quants実行と、同期中のbutton lock・safe error・再検索
+- complete/未確認status、J-Quants/ローカル有効件数、遅延し得る情報基準日と同期時刻の分離表示
+- complete成功表示は本番4,000件/最大5%縮小guard通過時だけとし、支配的legacy cohortと参照identity splitはfail closed表示
+- 検索はDB-only、同期errorはprovider body非露出とし、legacy採用を画面から暗黙実行しないこと
+- 取得、新規、更新、再有効化、無効化countのsuccess feedbackと、seed fallbackを全件成功表示しない境界
+- BYOK/private local/full dataset非同梱・非再配布、地方取引所単独銘柄を保証しない表示範囲
 - dashboard legacy AI usage panelと利用者向けholdings-source label
 - chart detail 強化
 - live mode の no-mock 表示

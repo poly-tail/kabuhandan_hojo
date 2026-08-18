@@ -955,10 +955,11 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
                   type="button"
                   data-manual-update="security-master"
                   data-manual-feedback="watchlist-search-feedback"
-                >銘柄DB更新</button>
+                >東証全銘柄を同期</button>
               </div>
               <div class="subtle">検索結果から詳細画面を開くか、保有入力欄へ銘柄コードを反映できます。数量を入力するまで保有銘柄には保存されません。</div>
             </form>
+            <div class="search-feedback" id="security-master-status" aria-live="polite">東証銘柄マスターの同期状態を確認しています...</div>
             <div class="search-feedback" id="watchlist-search-feedback"></div>
             <div class="stack" id="watchlist-search-results"></div>
             <div class="subtle">watchlist 未登録で、いまスコアが高い候補</div>
@@ -998,6 +999,11 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
         lastQuery: "",
         searchRequestId: 0,
         searchDebounceId: null,
+        securityMasterStatus: {
+          status: "loading",
+          data: null,
+          error: null,
+        },
         chartRangeKey: "all",
         manualFeedback: {},
         portfolioAiReview: {
@@ -1134,6 +1140,52 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
         if (!element) return;
         element.className = tone ? `search-feedback ${tone}` : "search-feedback";
         element.textContent = message;
+      };
+
+      const renderSecurityMasterStatus = () => {
+        const element = document.getElementById("security-master-status");
+        if (!element) return;
+        const status = state.securityMasterStatus;
+        if (status.status === "loading") {
+          element.className = "search-feedback";
+          element.textContent = "東証銘柄マスターの同期状態を確認しています...";
+          return;
+        }
+        if (status.status === "failed" || !status.data) {
+          element.className = "search-feedback error";
+          element.textContent = `同期状態を取得できませんでした: ${status.error || "unknown error"}`;
+          return;
+        }
+
+        const data = status.data;
+        const activeTotal = Number(data.active_total || 0).toLocaleString("ja-JP");
+        const jquantsCount = Number(data.jquants_active_count || 0).toLocaleString("ja-JP");
+        if (!data.complete) {
+          element.className = "search-feedback";
+          element.textContent = `東証全件同期は未確認です。ローカル有効銘柄 ${activeTotal}件。「東証全銘柄を同期」を実行し、失敗する場合はJ-Quants APIキーとエラー内容を確認してください。`;
+          return;
+        }
+
+        const sourceAsOf = data.source_as_of ? formatDate(data.source_as_of) : "基準日未確認";
+        const syncedAt = data.synced_at ? formatDateTime(data.synced_at) : "同期時刻未確認";
+        element.className = "search-feedback success";
+        element.textContent = `東証全件同期済み（J-Quants ${jquantsCount}件 / ローカル有効 ${activeTotal}件 / 情報基準日 ${sourceAsOf} / 同期 ${syncedAt}）`;
+      };
+
+      const loadSecurityMasterStatus = async () => {
+        state.securityMasterStatus = { status: "loading", data: null, error: null };
+        renderSecurityMasterStatus();
+        try {
+          const payload = await fetchJson("/securities/master/status");
+          state.securityMasterStatus = { status: "success", data: payload, error: null };
+        } catch (error) {
+          state.securityMasterStatus = {
+            status: "failed",
+            data: null,
+            error: error.message || String(error),
+          };
+        }
+        renderSecurityMasterStatus();
       };
 
       const setPortfolioFeedback = (message = "", tone = "") => {
@@ -3157,25 +3209,6 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
         }, 180);
       };
 
-      const syncSecurityMaster = async (button) => {
-        if (!button || button.disabled) return;
-        const input = document.getElementById("watchlist-search-input");
-        const query = input?.value || state.lastQuery || "";
-        button.disabled = true;
-        setSearchFeedback("銘柄DBを更新しています...");
-        try {
-          const result = await postJson("/securities/master/sync?require_jquants=true", {});
-          setSearchFeedback(`銘柄DBを更新しました: ${result.processed_count} 件。${result.detail || ""}`, "success");
-          if (query.trim()) {
-            await runSecuritySearch(query);
-          }
-        } catch (error) {
-          setSearchFeedback(`銘柄DB更新に失敗しました: ${error.message || String(error)}`, "error");
-        } finally {
-          button.disabled = false;
-        }
-      };
-
       const syncMarketProxyPrices = async (button) => {
         if (!button || button.disabled) return;
         const feedback = document.getElementById("market-proxy-sync-feedback");
@@ -3234,7 +3267,7 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
         const portfolioTickers = uniqueTickers(state.data?.portfolio_items || []);
         const globalTasks = {
           sources: [{ label: "ソース登録", url: "/sources/bootstrap" }],
-          "security-master": [{ label: "銘柄DB", url: "/securities/master/sync?require_jquants=true" }],
+          "security-master": [{ label: "東証全銘柄（J-Quants）", url: "/securities/master/sync?require_jquants=true" }],
           "market-proxy": [
             { label: "市場価格 1306", url: "/securities/1306/prices/sync?lookback_days=60", zeroIsError: true },
             { label: "市場価格 1321", url: "/securities/1321/prices/sync?lookback_days=60", zeroIsError: true },
@@ -3350,6 +3383,13 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
         const count = payload?.processed_count;
         const detail = payload?.detail || payload?.summary_text || "更新しました。";
         const zeroCountFailed = count === 0 && task.zeroIsError === true;
+        if (payload?.fetched_count !== undefined && payload?.source === "jquants") {
+          return {
+            label: task.label,
+            ok: payload.complete === true && !zeroCountFailed,
+            message: `取得 ${payload.fetched_count}件・新規 ${payload.inserted_count}件・更新 ${payload.updated_count}件・再有効化 ${payload.reactivated_count}件・無効化 ${payload.deactivated_count}件・J-Quants有効 ${payload.jquants_active_count}件`,
+          };
+        }
         return {
           label: task.label,
           ok: !zeroCountFailed,
@@ -3389,7 +3429,15 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
         if (!tasks.length) return;
 
         if (button) button.disabled = true;
-        setManualFeedback(feedbackId, `${tasks.length} 件の更新を実行しています...`, "", [], logId);
+        setManualFeedback(
+          feedbackId,
+          kind === "security-master"
+            ? "J-Quantsから東証全銘柄を同期しています..."
+            : `${tasks.length} 件の更新を実行しています...`,
+          "",
+          [],
+          logId,
+        );
 
         const results = [];
         for (const task of tasks) {
@@ -3427,17 +3475,11 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
 
         const query = document.getElementById("watchlist-search-input")?.value || state.lastQuery || "";
         await loadDashboard(state.data?.selected_ticker_code || selectedTickerCode() || null);
+        if (kind === "security-master") {
+          await loadSecurityMasterStatus();
+        }
         if (kind === "security-master" && query.trim()) {
           await runSecuritySearch(query);
-          setManualFeedback(
-            feedbackId,
-            failedCount
-              ? `取得できませんでした: ${failedSummary}`
-              : `銘柄DBを更新しました。検索結果も再取得しました。`,
-            failedCount ? "error" : "success",
-            results,
-            logId,
-          );
         }
       };
 
@@ -3580,7 +3622,7 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
           });
         }
 
-        await Promise.all([loadDashboard(null), loadStockAiUsage()]);
+        await Promise.all([loadDashboard(null), loadStockAiUsage(), loadSecurityMasterStatus()]);
         renderSearchResults([], "");
       };
 

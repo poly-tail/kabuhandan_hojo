@@ -22,6 +22,7 @@ class WatchlistService:
                 market=payload.market,
                 industry_17=None,
                 industry_33=None,
+                master_source="manual",
             )
             session.add(security)
 
@@ -77,4 +78,3 @@ class WatchlistService:
             .limit(1)
         )
         return session.scalar(statement)
-

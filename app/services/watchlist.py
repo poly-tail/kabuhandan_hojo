@@ -8,27 +8,24 @@ from sqlalchemy.orm import Session, selectinload
 from app.models.security import SecurityMaster
 from app.models.watchlist import Watchlist
 from app.schemas.watchlist import SecuritySearchResult, WatchlistCreate, WatchlistItem
-from app.services.security_master_catalog import local_security_master_catalog
 from app.services.security_profile import SecurityProfile, security_profile_service
 
 
 class WatchlistService:
     """Handle minimal Phase 0 watchlist operations."""
 
-    def ensure_search_catalog(self, db: Session, *, commit: bool = False) -> int:
-        return local_security_master_catalog.sync_to_db(db, commit=commit)
-
     def search_candidates(self, db: Session, query: str, limit: int = 10) -> list[SecuritySearchResult]:
-        self.ensure_search_catalog(db, commit=True)
         normalized = query.strip()
         if not normalized:
             return []
 
         lowered = normalized.lower()
-        ticker_exact = SecurityMaster.ticker_code == normalized
-        local_code_exact = SecurityMaster.local_code == normalized
-        ticker_prefix = SecurityMaster.ticker_code.like(f"{normalized}%")
-        local_code_prefix = SecurityMaster.local_code.like(f"{normalized}%")
+        ticker_lower = func.lower(SecurityMaster.ticker_code)
+        local_code_lower = func.lower(func.coalesce(SecurityMaster.local_code, ""))
+        ticker_exact = ticker_lower == lowered
+        local_code_exact = local_code_lower == lowered
+        ticker_prefix = ticker_lower.like(f"{lowered}%")
+        local_code_prefix = local_code_lower.like(f"{lowered}%")
         name_contains = func.lower(SecurityMaster.name).like(f"%{lowered}%")
         name_english_contains = func.lower(func.coalesce(SecurityMaster.name_english, "")).like(f"%{lowered}%")
         market_contains = func.lower(func.coalesce(SecurityMaster.market, "")).like(f"%{lowered}%")
@@ -62,7 +59,7 @@ class WatchlistService:
             self._to_search_result(
                 security=security,
                 in_watchlist=watchlist_id is not None,
-                profile=security_profile_service.resolve(security.ticker_code, session=db),
+                profile=None,
             )
             for security, watchlist_id in db.execute(statement).all()
         ]
@@ -94,6 +91,8 @@ class WatchlistService:
                 industry_17=profile.industry_17 if profile is not None else None,
                 industry_33=profile.industry_33 if profile is not None else None,
                 listed_date=profile.listed_date if profile is not None else None,
+                source_as_of=profile.source_as_of if profile is not None else None,
+                master_source="manual",
             )
             db.add(security)
         else:

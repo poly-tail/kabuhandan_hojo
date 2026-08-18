@@ -12,6 +12,7 @@ import httpx
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
+from kabuhandan_hojo.connectors.jquants import normalize_jquants_master_code
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +26,7 @@ class SecurityProfile:
     industry_17: str | None = None
     industry_33: str | None = None
     listed_date: date | None = None
+    source_as_of: date | None = None
     local_code: str | None = None
     ir_url: str | None = None
     source: str = "internal"
@@ -120,15 +122,14 @@ class SecurityProfileService:
             return None
 
         db_profile = self._from_session(session, normalized) if session is not None else None
-        preferred = self._known_profiles.get(normalized)
-        if preferred is None:
-            preferred = self._fetch_from_jquants(normalized)
-
-        if db_profile is not None and preferred is not None:
-            return self._merge_profiles(db_profile, preferred)
-        if preferred is not None:
-            return preferred
-        return db_profile
+        known_profile = self._known_profiles.get(normalized)
+        if db_profile is not None:
+            if known_profile is not None:
+                return self._merge_profiles(db_profile, known_profile)
+            return db_profile
+        if known_profile is not None:
+            return known_profile
+        return self._fetch_from_jquants(normalized)
 
     def search_known_profiles(self, query: str, *, limit: int = 10) -> list[SecurityProfile]:
         normalized = query.strip()
@@ -167,11 +168,14 @@ class SecurityProfileService:
             return None
         return SecurityProfile(
             ticker_code=ticker_code,
-            local_code=ticker_code,
+            local_code=security.local_code or ticker_code,
             name=security.name,
             name_english=security.name_english,
             market=security.market,
+            industry_17=security.industry_17,
+            industry_33=security.industry_33,
             listed_date=security.listed_date,
+            source_as_of=security.source_as_of,
             source="db",
         )
 
@@ -237,15 +241,21 @@ class SecurityProfileService:
         if isinstance(items, dict):
             items = [items]
         for item in items:
-            code = str(
+            raw_code = str(
                 item.get("Code")
                 or item.get("code")
                 or item.get("LocalCode")
                 or item.get("local_code")
                 or ""
+            ).strip().upper()
+            code = normalize_jquants_master_code(raw_code)
+            normalized_ticker = ticker_code.strip().upper()
+            alpha_public_alias = (
+                len(normalized_ticker) == 4
+                and raw_code == f"{normalized_ticker}0"
+                and not raw_code.isdigit()
             )
-            code = code[:4] if len(code) >= 4 else code
-            if code != ticker_code:
+            if code != normalized_ticker and not alpha_public_alias:
                 continue
             name = (
                 item.get("CompanyName")
@@ -264,16 +274,13 @@ class SecurityProfileService:
                 or item.get("MktNm")
                 or item.get("market")
             )
-            listed_date = None
-            raw_listed_date = item.get("Date") or item.get("date") or item.get("ListingDate")
-            if raw_listed_date:
-                try:
-                    listed_date = date.fromisoformat(str(raw_listed_date)[:10])
-                except ValueError:
-                    listed_date = None
+            listed_date = self._parse_date(
+                item.get("ListingDate") or item.get("ListedDate") or item.get("listed_date")
+            )
+            source_as_of = self._parse_date(item.get("Date") or item.get("date"))
             return SecurityProfile(
-                ticker_code=ticker_code,
-                local_code=str(item.get("LocalCode") or item.get("Code") or ticker_code),
+                ticker_code=normalized_ticker,
+                local_code=raw_code or normalized_ticker,
                 name=str(name),
                 name_english=(
                     str(item.get("CompanyNameEnglish"))
@@ -292,6 +299,7 @@ class SecurityProfileService:
                 industry_17=item.get("Sector17CodeName") or item.get("S17Nm") or item.get("sector_17"),
                 industry_33=item.get("Sector33CodeName") or item.get("S33Nm") or item.get("sector_33"),
                 listed_date=listed_date,
+                source_as_of=source_as_of,
                 source="jquants",
             )
         return None
@@ -325,12 +333,25 @@ class SecurityProfileService:
             industry_17=base.industry_17 or preferred.industry_17,
             industry_33=base.industry_33 or preferred.industry_33,
             listed_date=base.listed_date or preferred.listed_date,
+            source_as_of=base.source_as_of or preferred.source_as_of,
             local_code=base.local_code or preferred.local_code,
             name_english=base.name_english or preferred.name_english,
             ir_url=base.ir_url or preferred.ir_url,
             source=preferred.source if preferred.source != "internal" else base.source,
             aliases=tuple(dict.fromkeys((*base.aliases, *preferred.aliases))),
         )
+
+    @staticmethod
+    def _parse_date(value: object | None) -> date | None:
+        text = str(value or "").strip()
+        if not text:
+            return None
+        if len(text) == 8 and text.isdigit():
+            return date(int(text[:4]), int(text[4:6]), int(text[6:8]))
+        try:
+            return date.fromisoformat(text[:10])
+        except ValueError:
+            return None
 
     def _contains_japanese(self, value: str) -> bool:
         return bool(re.search(r"[ぁ-んァ-ヶ一-龯々ー]", value))

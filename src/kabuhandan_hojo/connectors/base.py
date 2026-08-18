@@ -41,6 +41,7 @@ class ListedIssueRecord:
     industry_17: str | None
     industry_33: str | None
     listed_date: date | None
+    source_as_of: date | None = None
     is_active: bool = True
 
 

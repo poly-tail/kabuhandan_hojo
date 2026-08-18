@@ -10,6 +10,7 @@ from kabuhandan_hojo.models.entities import (
     RawDocument,
     ScoreDaily,
     SecurityMaster,
+    SecurityMasterSyncRun,
     SourceRegistry,
     TechnicalFeatureDaily,
     ThesisNote,
@@ -27,10 +28,10 @@ __all__ = [
     "RawDocument",
     "ScoreDaily",
     "SecurityMaster",
+    "SecurityMasterSyncRun",
     "SourceRegistry",
     "TechnicalFeatureDaily",
     "ThesisNote",
     "VideoItem",
     "Watchlist",
 ]
-

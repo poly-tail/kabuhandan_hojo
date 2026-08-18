@@ -42,41 +42,36 @@ class LocalSecurityMasterCatalog:
             return [record for row in reader if (record := self._coerce_row(row)) is not None]
 
     def sync_to_db(self, db: Session, *, commit: bool = False) -> int:
-        processed_count = 0
+        inserted_count = 0
         for record in self.load():
-            self._upsert(db, record)
-            processed_count += 1
+            if self._insert_if_missing(db, record) is not None:
+                inserted_count += 1
         if commit:
             db.commit()
         else:
             db.flush()
-        return processed_count
+        return inserted_count
 
-    def _upsert(self, db: Session, record: LocalSecurityMasterRecord) -> SecurityMaster:
+    def _insert_if_missing(self, db: Session, record: LocalSecurityMasterRecord) -> SecurityMaster | None:
+        """Insert fallback data without overwriting an authoritative or manual row."""
+
         security = db.get(SecurityMaster, record.ticker_code)
-        if security is None:
-            security = SecurityMaster(
-                ticker_code=record.ticker_code,
-                local_code=record.local_code or record.ticker_code,
-                name=record.name,
-                name_english=record.name_english,
-                market=record.market,
-                industry_17=record.industry_17,
-                industry_33=record.industry_33,
-                listed_date=record.listed_date,
-                is_active=record.is_active,
-            )
-            db.add(security)
-            return security
+        if security is not None:
+            return None
 
-        security.local_code = record.local_code or security.local_code or record.ticker_code
-        security.name = record.name or security.name
-        security.name_english = record.name_english or security.name_english
-        security.market = record.market or security.market
-        security.industry_17 = record.industry_17 or security.industry_17
-        security.industry_33 = record.industry_33 or security.industry_33
-        security.listed_date = record.listed_date or security.listed_date
-        security.is_active = record.is_active
+        security = SecurityMaster(
+            ticker_code=record.ticker_code,
+            local_code=record.local_code or record.ticker_code,
+            name=record.name,
+            name_english=record.name_english,
+            market=record.market,
+            industry_17=record.industry_17,
+            industry_33=record.industry_33,
+            listed_date=record.listed_date,
+            is_active=record.is_active,
+            master_source="local_seed",
+        )
+        db.add(security)
         return security
 
     def _coerce_row(self, row: dict[str, str]) -> LocalSecurityMasterRecord | None:

@@ -1,5 +1,19 @@
 # Source Overview
 
+## 2026-08-18 東証/J-Quants銘柄マスター同期 addendum
+
+- `src/kabuhandan_hojo/connectors/jquants.py`はJ-Quants上場銘柄masterを全page取得し、numeric普通株の末尾`0`だけを4桁化します。非zero suffixの優先株等と英数字raw identifierを保持し、異なるraw codeの正規化衝突、pagination循環、page上限をfail closedにします。429は`Retry-After`を尊重するbounded retryです。timeout/network/invalid JSONは安全な`ConnectorError`へ変換し、HTTP errorにはstatusだけを残してprovider response bodyを除外します。
+- providerの`Date`は`source_as_of`へ、明示的な`ListingDate` / `ListedDate`だけを`listed_date`へ分離します。`source_as_of`は利用者planにより遅延し得ます。
+- `src/kabuhandan_hojo/services/ingestion.py`は現行snapshotを本番4,000件以上・単一基準日で検証し、既存J-Quants有効件数と支配的legacy cohortの合算基準から5%を超える縮小をDB変更前に拒否します。旧snapshot日が`listed_date`へ入った4,000件以上のlegacy cohortは通常UI/APIで採用せず、current CLIの`--adopt-legacy`を要求します。欠落deactivationはJ-Quants所有recordだけで、manual/local-seed/未採用legacyを維持し、historical同期はcurrent active/statusを上書きしません。
+- `security_master`は`master_source`、`source_as_of`、`last_seen_sync_id`を持ち、`security_master_sync_run`はcredentialやfull payloadではなく非secret provenanceと取得/永続化件数を保存します。
+- `GET /securities/master/status`と拡張`POST /securities/master/sync`は、scope、complete、情報基準日、同期時刻、取得/新規/更新/再有効化/無効化、ローカル/J-Quants有効件数を分離します。
+- `app/api/routes/ui.py`は`東証全銘柄を同期`とstatus領域を持ち、未確認・同期中・成功・失敗を分けます。required同期の失敗を36件seedで成功表示しません。
+- `app/services/security_master_catalog.py`のbundled 36件seedはinsert-onlyです。検索操作はseed同期を暗黙実行せず、既存J-Quants metadataを上書きしません。
+- `app/services/watchlist.py`は英数字ticker/local codeをcase-insensitiveにDB検索し、exact、prefix、name、marketのpriorityと登録済みprimary identifierを維持します。検索候補のprofile補完目的でJ-Quantsへ外部callしません。
+- `src/kabuhandan_hojo/services/ingestion.py`はordinary/preferred等のidentity split候補を検出し、旧identifierに他tableからの外部キー参照があれば自動修復せず同期全体を拒否します。
+- `scripts/sync_security_master.py`はbrowserなしのcurrent/historical/dry-runと、明示的なlegacy所有権採用を提供します。通常API/UIはlegacy ownershipを推測しません。`--dry-run`はmaster同期transactionをrollbackしますが、先行する`init_db()`のschema初期化・migrationと不足36件seed bootstrapは永続化され得ます。
+- 完全なmasterは利用者自身のJ-Quants APIキーでgit管理外のprivate local DBへ同期し、public repositoryへ同梱・再配布しません。scopeは東証/J-Quants listed issuesで、ETF、REIT、優先株等を含み得ますが、地方取引所単独銘柄を保証しません。
+
 ## 2026-08-18 security search / portfolio alias addendum
 
 - `app/api/routes/ui.py`はdashboard検索結果へ`保有入力へ`と`詳細を見る`を表示します。英字5文字末尾`0`のraw master codeは公開4文字で表示・portfolio入力し、detail actionのdata属性にはraw codeを維持します。
@@ -9,8 +23,8 @@
 
 ## 2026-08-18 specification baseline addendum
 
-- `docs/requirements/requirements_v1.6.md`、`docs/specs/api_spec_v1.9.md`、`docs/screen_specs/screen_spec_v2.1.md`を現行仕様の正本とします。
-- `SC-2026-08-18-01`が検索・保有入力・raw/public code境界を追跡し、旧versioned文書は変更せず履歴として保持します。
+- `docs/requirements/requirements_v1.7.md`、`docs/specs/api_spec_v2.0.md`、`docs/screen_specs/screen_spec_v2.2.md`を現行仕様の正本とします。
+- `SC-2026-08-18-02`がBYOK/private local master sync、scope、完全性、provenance、count、UI statusを追跡し、`SC-2026-08-18-01`と旧versioned文書は履歴として保持します。
 
 ## 2026-08-17 specification baseline addendum
 
@@ -69,10 +83,10 @@
 
 ## 2026-04-23 local master addendum
 
-- `data/security_master_jp.csv` を追加し、銘柄コードと日本語銘柄名のローカル正本として扱います。
-- `app/services/security_master_catalog.py` が CSV を `security_master` に upsert し、`app/services/watchlist.py` の検索前にも同期します。
-- `POST /securities/master/sync` はローカルCSVを必ず同期します。UI の `銘柄DB更新` は `require_jquants=true` を付けるため、J-Quants V2 `/equities/master` から全上場銘柄を取得できない場合は失敗表示になります。
-- `app/api/routes/ui.py` に `銘柄DB更新` と `市場価格更新` ボタンを追加しました。Market Overview は dashboard 読み込み時に J-Quants を自動で叩かず、ボタンからだけ市場proxy価格を同期します。
+- `data/security_master_jp.csv`は36件の初期検索seedとして追加されました。現行実装では完全な銘柄一覧の正本ではありません。
+- `app/services/security_master_catalog.py`は不足recordだけをinsertし、検索前には同期せず、J-Quants metadataを上書きしません。
+- 現行`POST /securities/master/sync`はJ-Quants current snapshotを優先し、required同期失敗時はrollbackします。optional fallbackだけがseedを`complete=false`として返します。
+- `app/api/routes/ui.py`の現行buttonは`東証全銘柄を同期`です。`市場価格更新`は別のJ-Quants daily-bars操作として維持します。
 
 ## 2026-04-23 YouTube / IR addendum
 
@@ -106,6 +120,7 @@ HTTP の入口は `app/` にあり、source 固有の処理、特徴量計算、
 | `app/api/routes/health.py` | health endpoint |
 | `app/api/routes/watchlist.py` | watchlist と `/securities/search` |
 | `app/api/routes/monitoring.py` | monitoring 系 API |
+| `app/schemas/security_master_sync.py` | 銘柄master status/syncのscope、provenance、count契約 |
 | `app/api/routes/ui.py` | lightweight HTML UI shell、`/ui/dashboard/data`、legacy AI usage panel |
 | `app/services/dashboard_experience.py` | UI 用 view model の組み立て |
 | `app/services/portfolio_ai_review.py` | multi-mode AI分析のOpenAI連携、prompt_only、mock応答、キャッシュ/履歴、usage記録 |
@@ -114,6 +129,7 @@ HTTP の入口は `app/` にあり、source 固有の処理、特徴量計算、
 | `app/services/security_profile.py` | 銘柄プロファイルと表示名の補完 |
 | `app/services/mock_*` | mock mode の返却データ |
 | `src/kabuhandan_hojo/connectors/` | J-Quants / EDINET connector |
+| `scripts/sync_security_master.py` | J-Quants masterのprivate local current/historical/dry-runと明示legacy採用 |
 | `src/kabuhandan_hojo/features/technical.py` | テクニカル特徴量計算 |
 | `src/kabuhandan_hojo/scoring/engine.py` | explainable weighted scoring |
 | `src/kabuhandan_hojo/services/` | ingestion / insights / query / watchlist |

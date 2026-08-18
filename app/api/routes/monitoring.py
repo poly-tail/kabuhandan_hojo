@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.db.session import get_db
+from app.schemas.security_master_sync import SecurityMasterStatusResponse, SecurityMasterSyncResponse
 from app.services.mock_monitoring import mock_monitoring_service
 from app.services.monitoring_runtime import get_monitoring_container, get_monitoring_settings
 from app.services.security_master_catalog import local_security_master_catalog
@@ -72,6 +73,21 @@ def _build_security_service() -> SecurityService:
 
 def _build_watchlist_service() -> WatchlistService:
     return WatchlistService()
+
+
+def _security_master_status_payload(status_snapshot: Any) -> dict[str, Any]:
+    """Map service status to the public contract without exposing credentials."""
+
+    return {
+        "source": status_snapshot.source,
+        "source_scope": status_snapshot.source_scope,
+        "source_as_of": status_snapshot.source_as_of,
+        "sync_id": status_snapshot.sync_id,
+        "synced_at": status_snapshot.synced_at,
+        "complete": status_snapshot.complete,
+        "active_total": status_snapshot.active_total,
+        "jquants_active_count": status_snapshot.jquants_active_count,
+    }
 
 
 def _to_alert_reads(alerts: list) -> list[AlertRead]:
@@ -293,48 +309,103 @@ def bootstrap_sources(db: Session | None = Depends(get_db)) -> JobRunResponse:
     )
 
 
-@router.post("/securities/master/sync", response_model=JobRunResponse)
+@router.get("/securities/master/status", response_model=SecurityMasterStatusResponse)
+def get_security_master_status(db: Session | None = Depends(get_db)) -> SecurityMasterStatusResponse:
+    """Return local coverage for the latest complete J-Quants TSE snapshot."""
+
+    session = _require_db(db)
+    status_snapshot = _build_ingestion_service().get_security_master_status(session)
+    return SecurityMasterStatusResponse(**_security_master_status_payload(status_snapshot))
+
+
+@router.post("/securities/master/sync", response_model=SecurityMasterSyncResponse)
 async def sync_security_master(
     target_date: date | None = Query(default=None),
     require_jquants: bool = Query(default=False),
     db: Session | None = Depends(get_db),
-) -> JobRunResponse:
+) -> SecurityMasterSyncResponse:
     session = _require_db(db)
     service = _build_ingestion_service()
-    local_count = local_security_master_catalog.sync_to_db(session)
-    jquants_count = 0
-    jquants_note = "J-Quants listed master sync was skipped because JQUANTS_API_KEY is not configured."
     try:
-        jquants_count = await service.sync_security_master_from_jquants(session, as_of=target_date)
-        jquants_note = "J-Quants listed master was synchronized."
+        sync_result = await service.sync_security_master_from_jquants(session, as_of=target_date)
     except MissingCredentialsError as exc:
         if require_jquants:
+            session.rollback()
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"{exc} Full listed security master sync requires JQUANTS_API_KEY.",
             ) from exc
+        sync_result = None
+        fallback_note = "J-Quants sync was skipped because JQUANTS_API_KEY is not configured."
     except ConnectorError as exc:
-        if require_jquants or not local_count:
+        if require_jquants:
+            session.rollback()
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-        jquants_note = f"J-Quants listed master sync failed: {exc}"
-    if require_jquants and jquants_count == 0:
+        sync_result = None
+        fallback_note = f"J-Quants listed master sync failed: {exc}"
+
+    if sync_result is not None and require_jquants and (
+        sync_result.fetched_count == 0 or (target_date is None and not sync_result.complete)
+    ):
+        session.rollback()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="J-Quants listed master sync returned 0 issues.",
+            detail="J-Quants listed master sync did not produce a complete, non-empty snapshot.",
         )
+
+    if sync_result is None:
+        bundled_count = len(local_security_master_catalog.load())
+        inserted_count = local_security_master_catalog.sync_to_db(session)
+        session.commit()
+        status_snapshot = service.get_security_master_status(session)
+        executed_at = datetime.now(timezone.utc)
+        return SecurityMasterSyncResponse(
+            source="local_seed",
+            source_scope="bundled_search_seed_only",
+            source_as_of=None,
+            sync_id=None,
+            synced_at=executed_at,
+            complete=False,
+            active_total=status_snapshot.active_total,
+            jquants_active_count=status_snapshot.jquants_active_count,
+            job_name="sync_security_master",
+            processed_count=inserted_count,
+            fetched_count=bundled_count,
+            upserted_count=inserted_count,
+            inserted_count=inserted_count,
+            updated_count=0,
+            reactivated_count=0,
+            deactivated_count=0,
+            detail=(
+                f"Loaded {bundled_count} bundled search-seed records and inserted {inserted_count}; "
+                f"this is not a complete TSE snapshot. {fallback_note}"
+            ),
+            executed_at=executed_at,
+        )
+
     session.commit()
-    processed_count = local_count + jquants_count
-    detail = f"Synchronized local Japanese security master ({local_count}) and J-Quants listed master ({jquants_count}). {jquants_note}"
-    if target_date is not None:
-        detail = (
-            f"Synchronized local Japanese security master ({local_count}) and J-Quants listed master "
-            f"({jquants_count}) for {target_date.isoformat()}. {jquants_note}"
-        )
-    return JobRunResponse(
+    snapshot_label = (
+        f"historical ({target_date.isoformat()})" if target_date is not None else "current"
+    )
+    coverage_label = "complete" if sync_result.complete else "incomplete"
+    detail = (
+        f"Synchronized a {coverage_label} {snapshot_label} J-Quants TSE listed-issues snapshot: "
+        f"fetched {sync_result.fetched_count}, inserted {sync_result.inserted_count}, "
+        f"updated {sync_result.updated_count}, reactivated {sync_result.reactivated_count}, "
+        f"deactivated {sync_result.deactivated_count}."
+    )
+    return SecurityMasterSyncResponse(
+        **_security_master_status_payload(sync_result),
         job_name="sync_security_master",
-        processed_count=processed_count,
+        processed_count=sync_result.upserted_count,
+        fetched_count=sync_result.fetched_count,
+        upserted_count=sync_result.upserted_count,
+        inserted_count=sync_result.inserted_count,
+        updated_count=sync_result.updated_count,
+        reactivated_count=sync_result.reactivated_count,
+        deactivated_count=sync_result.deactivated_count,
         detail=detail,
-        executed_at=datetime.now(timezone.utc),
+        executed_at=sync_result.synced_at,
     )
 
 

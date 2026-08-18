@@ -24,12 +24,37 @@ class SecurityMaster(TimestampMixin, Base):
     industry_33: Mapped[str | None] = mapped_column(String(100))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     listed_date: Mapped[date | None] = mapped_column(Date)
+    master_source: Mapped[str] = mapped_column(String(32), default="legacy", server_default="legacy", nullable=False)
+    source_as_of: Mapped[date | None] = mapped_column(Date)
+    last_seen_sync_id: Mapped[str | None] = mapped_column(String(36))
 
     watchlist_items: Mapped[list["Watchlist"]] = relationship(back_populates="security")
     prices: Mapped[list["PriceDaily"]] = relationship(back_populates="security")
     events: Mapped[list["EventFact"]] = relationship(back_populates="security")
     scores: Mapped[list["ScoreDaily"]] = relationship(back_populates="security")
     technical_features: Mapped[list["TechnicalFeatureDaily"]] = relationship(back_populates="security")
+
+
+class SecurityMasterSyncRun(Base):
+    """Persist non-secret provenance and counts for one master sync attempt."""
+
+    __tablename__ = "security_master_sync_run"
+
+    sync_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    source: Mapped[str] = mapped_column(String(32), nullable=False)
+    source_scope: Mapped[str] = mapped_column(String(64), nullable=False)
+    source_as_of: Mapped[date | None] = mapped_column(Date)
+    synced_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    complete: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_current_snapshot: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    fetched_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    inserted_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    updated_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    reactivated_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    deactivated_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    active_total: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    jquants_active_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    adopted_legacy_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
 
 class Watchlist(TimestampMixin, Base):

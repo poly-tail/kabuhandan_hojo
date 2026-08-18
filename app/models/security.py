@@ -24,6 +24,9 @@ class SecurityMaster(TimestampMixin, Base):
     industry_33: Mapped[str | None] = mapped_column(String(100))
     listed_date: Mapped[date | None] = mapped_column(Date)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    master_source: Mapped[str] = mapped_column(String(32), default="legacy", server_default="legacy", nullable=False)
+    source_as_of: Mapped[date | None] = mapped_column(Date)
+    last_seen_sync_id: Mapped[str | None] = mapped_column(String(36))
 
     watchlist_items: Mapped[list["Watchlist"]] = relationship(back_populates="security")
     prices: Mapped[list["PriceDaily"]] = relationship(back_populates="security")

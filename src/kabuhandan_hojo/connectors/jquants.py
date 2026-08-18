@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import date
 from decimal import Decimal
@@ -21,12 +22,33 @@ from kabuhandan_hojo.connectors.base import (
 logger = logging.getLogger(__name__)
 
 
+def normalize_jquants_master_code(value: str) -> str:
+    """Map an ordinary-share provider code to the existing public identifier.
+
+    J-Quants uses five characters for issue identifiers.  A numeric trailing
+    zero denotes the ordinary share represented by the familiar four-digit
+    code, while a non-zero suffix can distinguish another listed issue (for
+    example, a preferred share) and must therefore be retained.  Existing
+    alphanumeric identifiers remain raw for backward compatibility.
+    """
+
+    normalized = value.strip().upper()
+    if normalized.isdigit() and len(normalized) == 5 and normalized.endswith("0"):
+        return normalized[:4]
+    return normalized
+
+
 class JQuantsConnector(MarketDataConnector):
     """Minimal J-Quants client wrapper.
 
     The concrete endpoints can evolve by subscription plan. The connector is
     isolated so path or field updates do not affect scoring or API layers.
     """
+
+    MAX_LISTED_MASTER_PAGES = 1_000
+    MAX_RATE_LIMIT_RETRIES = 2
+    DEFAULT_RATE_LIMIT_DELAY_SECONDS = 1.0
+    MAX_RATE_LIMIT_DELAY_SECONDS = 10.0
 
     def __init__(self, base_url: str, api_key: str | None) -> None:
         self.base_url = base_url.rstrip("/")
@@ -86,12 +108,22 @@ class JQuantsConnector(MarketDataConnector):
             for path in candidate_paths:
                 issues: list[ListedIssueRecord] = []
                 pagination_key: str | None = None
+                seen_pagination_keys: set[str] = set()
+                page_count = 0
                 while True:
+                    page_count += 1
+                    if page_count > self.MAX_LISTED_MASTER_PAGES:
+                        raise ConnectorError("J-Quants listed master pagination exceeded the safe page limit.")
                     params = dict(base_params)
                     if pagination_key:
                         params["pagination_key"] = pagination_key
 
-                    response = await client.get(f"{self.base_url}{path}", params=params, headers=headers)
+                    response = await self._get_with_rate_limit_retry(
+                        client,
+                        f"{self.base_url}{path}",
+                        params=params,
+                        headers=headers,
+                    )
                     try:
                         response.raise_for_status()
                     except httpx.HTTPStatusError as exc:
@@ -100,14 +132,31 @@ class JQuantsConnector(MarketDataConnector):
                             break
                         raise self._connector_error_from_response(exc.response) from exc
 
-                    payload = response.json()
+                    try:
+                        payload = response.json()
+                    except ValueError as exc:
+                        raise ConnectorError("J-Quants listed master returned invalid JSON.") from exc
+                    if not isinstance(payload, dict):
+                        raise ConnectorError("J-Quants listed master returned an invalid JSON object.")
                     issues.extend(self._extract_listed_issues(payload))
                     pagination_key = self._next_pagination_key(payload)
                     if not pagination_key:
                         break
+                    if pagination_key in seen_pagination_keys:
+                        raise ConnectorError("J-Quants listed master returned a repeated pagination key.")
+                    seen_pagination_keys.add(pagination_key)
 
                 if issues:
-                    deduped = list({issue.ticker_code: issue for issue in issues}.values())
+                    deduped_by_ticker: dict[str, ListedIssueRecord] = {}
+                    for issue in issues:
+                        existing = deduped_by_ticker.get(issue.ticker_code)
+                        if existing is not None and existing.local_code != issue.local_code:
+                            raise ConnectorError(
+                                "J-Quants listed master contains conflicting provider codes "
+                                f"for normalized identifier {issue.ticker_code}."
+                            )
+                        deduped_by_ticker[issue.ticker_code] = issue
+                    deduped = list(deduped_by_ticker.values())
                     deduped.sort(key=lambda issue: issue.ticker_code)
                     logger.info("Fetched %s listed issues using J-Quants path %s", len(deduped), path)
                     return deduped
@@ -222,13 +271,10 @@ class JQuantsConnector(MarketDataConnector):
             if not ticker_code or not name:
                 continue
 
-            listed_date = None
-            raw_listed_date = item.get("Date") or item.get("date") or item.get("ListingDate")
-            if raw_listed_date:
-                try:
-                    listed_date = date.fromisoformat(str(raw_listed_date)[:10])
-                except ValueError:
-                    listed_date = None
+            source_as_of = self._parse_date(item.get("Date") or item.get("date"))
+            listed_date = self._parse_date(
+                item.get("ListingDate") or item.get("ListedDate") or item.get("listed_date")
+            )
 
             results.append(
                 ListedIssueRecord(
@@ -258,6 +304,7 @@ class JQuantsConnector(MarketDataConnector):
                     industry_17=item.get("Sector17CodeName") or item.get("S17Nm") or item.get("sector_17"),
                     industry_33=item.get("Sector33CodeName") or item.get("S33Nm") or item.get("sector_33"),
                     listed_date=listed_date,
+                    source_as_of=source_as_of,
                     is_active=True,
                 )
             )
@@ -277,10 +324,39 @@ class JQuantsConnector(MarketDataConnector):
         return list(dict.fromkeys(candidates))
 
     def _normalize_local_code(self, value: str) -> str:
-        normalized = value.strip()
-        if normalized.isdigit() and len(normalized) >= 4:
-            return normalized[:4]
-        return normalized
+        return normalize_jquants_master_code(value)
+
+    async def _get_with_rate_limit_retry(
+        self,
+        client: httpx.AsyncClient,
+        url: str,
+        *,
+        params: dict[str, Any],
+        headers: dict[str, str],
+    ) -> httpx.Response:
+        """GET one master page with a bounded Retry-After-aware 429 retry."""
+
+        for attempt in range(self.MAX_RATE_LIMIT_RETRIES + 1):
+            try:
+                response = await client.get(url, params=params, headers=headers)
+            except httpx.TimeoutException as exc:
+                raise ConnectorError("J-Quants listed master request timed out.") from exc
+            except httpx.RequestError as exc:
+                raise ConnectorError("J-Quants listed master network request failed.") from exc
+            if response.status_code != 429 or attempt >= self.MAX_RATE_LIMIT_RETRIES:
+                return response
+            retry_after = getattr(response, "headers", {}).get("Retry-After")
+            try:
+                delay = (
+                    float(retry_after)
+                    if retry_after is not None
+                    else self.DEFAULT_RATE_LIMIT_DELAY_SECONDS * (2**attempt)
+                )
+            except (TypeError, ValueError):
+                delay = self.DEFAULT_RATE_LIMIT_DELAY_SECONDS * (2**attempt)
+            delay = max(0.0, min(delay, self.MAX_RATE_LIMIT_DELAY_SECONDS))
+            await asyncio.sleep(delay)
+        raise AssertionError("unreachable")
 
     def _next_pagination_key(self, payload: dict[str, Any]) -> str | None:
         pagination = payload.get("pagination")
@@ -428,10 +504,6 @@ class JQuantsConnector(MarketDataConnector):
             raise MissingCredentialsError("J-Quants API key is not configured.")
 
     def _connector_error_from_response(self, response: httpx.Response) -> ConnectorError:
-        detail = response.text
-        try:
-            payload = response.json()
-            detail = str(payload.get("message") or payload.get("detail") or payload)
-        except ValueError:
-            pass
-        return ConnectorError(f"J-Quants API request failed with status {response.status_code}: {detail}")
+        # Provider response bodies can contain operational or account-specific
+        # details.  Keep the exception safe for logs and API error surfaces.
+        return ConnectorError(f"J-Quants API request failed with status {response.status_code}.")
