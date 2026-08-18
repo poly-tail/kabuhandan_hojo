@@ -387,6 +387,33 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
         grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
       }
 
+      .stock-ai-usage-panel {
+        display: grid;
+        gap: 8px;
+        padding: 12px 14px;
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        background: rgba(0, 109, 91, 0.05);
+      }
+
+      .stock-ai-usage-grid {
+        display: grid;
+        gap: 8px 14px;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      }
+
+      .stock-ai-usage-value {
+        color: var(--ink);
+        font-size: 14px;
+        line-height: 1.55;
+      }
+
+      .stock-ai-usage-warning {
+        color: var(--warn);
+        font-size: 12px;
+        line-height: 1.55;
+      }
+
       .ai-review-actions, .checkbox-row {
         display: flex;
         gap: 12px;
@@ -763,6 +790,21 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
                 </div>
                 <div class="score-chip" id="stock-ai-cost">--</div>
               </div>
+              <div class="stock-ai-usage-panel" id="stock-ai-usage" aria-live="polite">
+                <div class="stock-ai-usage-grid">
+                  <div>
+                    <div class="eyebrow">アプリ内利用量（legacy stock-review）</div>
+                    <div class="stock-ai-usage-value" id="stock-ai-usage-today">本日 成功レビュー -- / --回・残り --・OpenAI呼出 --回・概算 $--</div>
+                  </div>
+                  <div>
+                    <div class="eyebrow">月間利用量</div>
+                    <div class="stock-ai-usage-value" id="stock-ai-usage-month">今月 成功レビュー --回・OpenAI呼出 --回・概算 $--</div>
+                  </div>
+                </div>
+                <div class="stock-ai-usage-warning" id="stock-ai-usage-unpriced" hidden></div>
+                <div class="subtle" id="stock-ai-usage-history-note" hidden></div>
+                <div class="subtle">1回＝正常完了した一括レビュー1件（銘柄数に関係なし）です。この集計は旧stock-review経路だけが対象です。金額はtoken使用量に基づく概算で、正式な請求額ではありません。OpenAI PlatformのUsage Dashboardを正本として確認してください。</div>
+              </div>
               <div class="ai-review-control-grid">
                 <select class="input" id="stock-ai-mode" aria-label="AI分析モード">
                   <option value="scanner">軽量スキャン</option>
@@ -809,7 +851,7 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
             </div>
             <div class="ai-review-grid" id="portfolio-ai-review-results"></div>
             <form class="search-row" id="portfolio-form" style="margin-top: 12px;">
-              <input class="search-input" id="portfolio-ticker-input" name="ticker_code" placeholder="7203" aria-label="保有銘柄コード" />
+              <input class="search-input" id="portfolio-ticker-input" name="ticker_code" placeholder="7203 / 285A" aria-label="保有銘柄コード" />
               <input class="search-input" id="portfolio-quantity-input" name="quantity" type="number" step="0.0001" min="0.0001" placeholder="100" aria-label="保有数量" />
               <input class="search-input" id="portfolio-average-cost-input" name="average_cost" type="number" step="0.0001" min="0.0001" placeholder="3200" aria-label="平均取得単価" />
               <input class="search-input" id="portfolio-note-input" name="note" placeholder="メモ" aria-label="保有メモ" />
@@ -896,14 +938,14 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
           </div>
           <div class="watchlist-tools">
             <form class="search-form" id="watchlist-search-form">
-              <label class="search-label" for="watchlist-search-input">銘柄名か4桁コードで検索して詳細画面へ移動</label>
+              <label class="search-label" for="watchlist-search-input">銘柄名か銘柄コード（数字・英字）で検索</label>
               <div class="search-row">
                 <input
                   id="watchlist-search-input"
                   class="input"
                   type="search"
                   name="q"
-                  placeholder="7203 / トヨタ / ソフトバンク / 任天堂"
+                  placeholder="7203 / 285A / トヨタ / キオクシア"
                   autocomplete="off"
                 />
                 <button class="search-button" id="watchlist-search-button" type="submit">検索</button>
@@ -915,7 +957,7 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
                   data-manual-feedback="watchlist-search-feedback"
                 >銘柄DB更新</button>
               </div>
-              <div class="subtle">検索結果を選ぶと銘柄ごとの詳細画面を開きます。watchlist 追加は詳細画面で行います。</div>
+              <div class="subtle">検索結果から詳細画面を開くか、保有入力欄へ銘柄コードを反映できます。数量を入力するまで保有銘柄には保存されません。</div>
             </form>
             <div class="search-feedback" id="watchlist-search-feedback"></div>
             <div class="stack" id="watchlist-search-results"></div>
@@ -963,6 +1005,11 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
           data: null,
           error: null,
         },
+        stockAiUsage: {
+          status: "loading",
+          data: null,
+          error: null,
+        },
         watchlistAiReview: {
           status: "idle",
           data: null,
@@ -974,6 +1021,13 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
 
       const detailPageUrl = (tickerCode) => `/ui/security/${encodeURIComponent(tickerCode)}`;
       const chartPageUrl = (tickerCode) => `/ui/security/${encodeURIComponent(tickerCode)}/chart`;
+
+      const publicSecurityCode = (value) => {
+        const normalized = String(value ?? "").trim();
+        const isJquantsAlphanumericCode = /^[0-9A-Za-z]{4}0$/.test(normalized)
+          && /[A-Za-z]/.test(normalized.slice(0, 4));
+        return isJquantsAlphanumericCode ? normalized.slice(0, 4) : normalized;
+      };
 
       const parseUiDate = (value) => {
         if (!value) return null;
@@ -1126,6 +1180,15 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
         critical: "重要局面分析",
         prompt_only: "ChatGPT投入用プロンプト生成",
       }[mode] || mode || "-");
+
+      const aiHoldingsSourceLabel = (source) => ({
+        request: "対象: リクエスト指定銘柄",
+        database: "対象: 実DB保有銘柄",
+        watchlist: "対象: 監視銘柄",
+        candidates: "対象: 狙い中銘柄",
+        mock: "対象: テスト用仮保有銘柄",
+        none: "対象: 未指定",
+      }[source] || "対象: 未確認");
 
       const renderCompactList = (items = []) => {
         if (!items.length) return "";
@@ -1312,7 +1375,7 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
         }
         const base = { scanner: 0.006, analyst: 0.02, judge: 0.045, critical: 0.075, prompt_only: 0 }[mode] ?? 0.02;
         const perStock = { scanner: 0.002, analyst: 0.007, judge: 0.005, critical: 0.012, prompt_only: 0 }[mode] ?? 0.004;
-        const estimate = mode === "prompt_only" ? 0 : base + perStock * count + (includeWebSearch ? 0.008 * webCalls : 0);
+        const estimate = mode === "prompt_only" ? 0 : base + perStock * count + (includeWebSearch ? 0.01 * webCalls : 0);
         return { count, estimate };
       };
 
@@ -1320,7 +1383,89 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
         const element = document.getElementById("stock-ai-cost");
         if (!element) return;
         const { count, estimate } = estimateStockAiCost();
-        element.textContent = `$${estimate.toFixed(3)} / ${count}銘柄`;
+        element.textContent = `今回の事前概算 $${estimate.toFixed(3)} / ${count}銘柄`;
+      };
+
+      const nonNegativeInteger = (value) => {
+        const parsed = Number(value);
+        return Number.isFinite(parsed) ? Math.max(0, Math.trunc(parsed)) : 0;
+      };
+
+      const estimatedUsd = (value) => {
+        const parsed = Number(value);
+        return Number.isFinite(parsed) && parsed >= 0 ? `$${parsed.toFixed(4)}` : "$--";
+      };
+
+      const renderStockAiUsage = () => {
+        const usage = state.stockAiUsage;
+        const unpricedElement = document.getElementById("stock-ai-usage-unpriced");
+        const historyElement = document.getElementById("stock-ai-usage-history-note");
+        if (usage.status === "loading" && !usage.data) {
+          text("stock-ai-usage-today", "本日の利用量を読み込み中...");
+          text("stock-ai-usage-month", "今月の利用量を読み込み中...");
+          if (unpricedElement) unpricedElement.hidden = true;
+          if (historyElement) historyElement.hidden = true;
+          return;
+        }
+        if (!usage.data) {
+          text("stock-ai-usage-today", "本日の利用量を取得できませんでした。");
+          text("stock-ai-usage-month", "今月の利用量を取得できませんでした。");
+          if (unpricedElement) {
+            unpricedElement.textContent = "利用量APIを確認してください。AI分析そのものの結果とは別の表示エラーです。";
+            unpricedElement.hidden = false;
+          }
+          if (historyElement) historyElement.hidden = true;
+          return;
+        }
+
+        const summary = usage.data;
+        const dailyLimit = nonNegativeInteger(summary.daily_limit);
+        const todayRuns = nonNegativeInteger(summary.today?.review_runs);
+        const todayApiCalls = nonNegativeInteger(summary.today?.api_calls);
+        const monthRuns = nonNegativeInteger(summary.month?.review_runs);
+        const monthApiCalls = nonNegativeInteger(summary.month?.api_calls);
+        const remaining = Number.isFinite(Number(summary.remaining_today))
+          ? nonNegativeInteger(summary.remaining_today)
+          : Math.max(0, dailyLimit - todayRuns);
+        text(
+          "stock-ai-usage-today",
+          `本日 成功レビュー ${todayRuns} / ${dailyLimit}回・残り ${remaining}・OpenAI呼出 ${todayApiCalls}回・概算 ${estimatedUsd(summary.today?.estimated_cost_usd)}`,
+        );
+        text(
+          "stock-ai-usage-month",
+          `今月 成功レビュー ${monthRuns}回・OpenAI呼出 ${monthApiCalls}回・概算 ${estimatedUsd(summary.month?.estimated_cost_usd)}`,
+        );
+
+        const todayUnpriced = nonNegativeInteger(summary.today?.unpriced_api_calls);
+        const monthUnpriced = nonNegativeInteger(summary.month?.unpriced_api_calls);
+        if (unpricedElement) {
+          unpricedElement.textContent = todayUnpriced || monthUnpriced
+            ? `金額未算定のAPI呼び出し: 本日 ${todayUnpriced}回・今月 ${monthUnpriced}回`
+            : "";
+          unpricedElement.hidden = !(todayUnpriced || monthUnpriced);
+        }
+        if (historyElement) {
+          historyElement.textContent = summary.incomplete_pre_v2_history
+            ? "旧形式のカウンターは新集計へ移行していません。更新前の回数・金額は含まれません。"
+            : "";
+          historyElement.hidden = !summary.incomplete_pre_v2_history;
+        }
+      };
+
+      const loadStockAiUsage = async () => {
+        state.stockAiUsage = { ...state.stockAiUsage, status: "loading", error: null };
+        renderStockAiUsage();
+        try {
+          const payload = await fetchJson("/api/ai/stock-review/usage");
+          state.stockAiUsage = { status: "success", data: payload, error: null };
+        } catch (error) {
+          state.stockAiUsage = {
+            status: "failed",
+            data: null,
+            error: error.message || String(error),
+          };
+        }
+        renderStockAiUsage();
       };
 
       const syncStockAiPrompt = (prompt = "") => {
@@ -1417,7 +1562,7 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
             <article class="ai-review-card error">
               <div class="meta">
                 <strong>${escapeHtml(aiReviewStatusLabel(status))}</strong>
-                <span class="chip warn">${escapeHtml(data.holdings_source || "-")}</span>
+                <span class="chip warn">${escapeHtml(aiHoldingsSourceLabel(data.holdings_source))}</span>
               </div>
               <p>${escapeHtml(data.error?.message || data.portfolio_summary?.overall_view || "分析できませんでした。")}</p>
               ${rawOutput}
@@ -1435,10 +1580,10 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
           data.model ? `model ${data.model}` : "",
           data.reasoning_effort ? `reasoning ${data.reasoning_effort}` : "",
           data.web_search_policy ? `web policy ${data.web_search_policy}` : "",
-          data.estimated_cost_usd != null ? `推定 $${Number(data.estimated_cost_usd || 0).toFixed(4)}` : "",
-          data.actual_usage?.web_search_calls ? `Web検索 ${data.actual_usage.web_search_calls}回上限` : "",
+          data.estimated_cost_usd != null ? `今回の事前概算 $${Number(data.estimated_cost_usd || 0).toFixed(4)}` : "",
+          data.actual_usage?.web_search_calls ? `Web検索 ${data.actual_usage.web_search_calls}回` : "",
           data.cache_hit ? "前回結果" : "",
-          data.holdings_source === "mock" ? "テスト用仮保有銘柄" : data.holdings_source === "database" ? "実DB保有銘柄" : "リクエスト指定",
+          aiHoldingsSourceLabel(data.holdings_source),
         ].filter(Boolean);
         const stockCards = (data.stocks || []).map((stock) => `
           <article class="ai-review-card">
@@ -1554,6 +1699,7 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
         } finally {
           setPortfolioAiButtonsDisabled(false);
           renderPortfolioAiReview();
+          await loadStockAiUsage();
         }
       };
 
@@ -1635,7 +1781,7 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
             <article class="ai-review-card error">
               <div class="meta">
                 <strong>${escapeHtml(aiReviewStatusLabel(status))}</strong>
-                <span class="chip warn">${escapeHtml(data.holdings_source || "-")}</span>
+                <span class="chip warn">${escapeHtml(aiHoldingsSourceLabel(data.holdings_source))}</span>
               </div>
               <p>${escapeHtml(data.error?.message || data.portfolio_summary?.overall_view || "分析できませんでした。")}</p>
               ${rawOutput}
@@ -1650,6 +1796,9 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
           data.mock_response ? "API非呼び出しmock" : "OpenAI API",
           data.model ? `model ${data.model}` : "",
           data.reasoning_effort ? `reasoning ${data.reasoning_effort}` : "",
+          data.estimated_cost_usd != null ? `今回の事前概算 $${Number(data.estimated_cost_usd || 0).toFixed(4)}` : "",
+          data.actual_usage?.web_search_calls ? `Web検索 ${data.actual_usage.web_search_calls}回` : "",
+          aiHoldingsSourceLabel(data.holdings_source),
           "選択ウォッチリスト",
         ].filter(Boolean);
         const stockCards = (data.stocks || []).map((stock) => `
@@ -1743,6 +1892,7 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
         } finally {
           setWatchlistAiButtonsDisabled(false);
           renderWatchlistAiReview();
+          await loadStockAiUsage();
         }
       };
 
@@ -1941,7 +2091,7 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
           <article class="screen-row" data-select-ticker="${escapeAttr(item.ticker_code)}">
             <div>
               <strong>${escapeHtml(item.name)}</strong>
-              <div class="subtle">${escapeHtml(item.ticker_code)} / ${escapeHtml(item.market ?? "-")}</div>
+              <div class="subtle">${escapeHtml(publicSecurityCode(item.ticker_code))} / ${escapeHtml(item.market ?? "-")}</div>
             </div>
             <div><span class="score-chip">${escapeHtml(item.total_score.score)}</span></div>
             <div class="subtle">${escapeHtml(item.reason_summary)} / ${escapeHtml(item.caution)}</div>
@@ -1951,7 +2101,7 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
 
       const renderSearchResults = (results, query) => {
         if (!query) {
-          fill("watchlist-search-results", `<div class="empty">銘柄名か4桁コードで検索してください。</div>`);
+          fill("watchlist-search-results", `<div class="empty">銘柄名か銘柄コード（数字・英字）で検索してください。</div>`);
           return;
         }
         if (!results.length) {
@@ -1962,14 +2112,21 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
           <article class="search-result" data-open-ticker="${escapeAttr(item.ticker_code)}">
             <div>
               <strong>${escapeHtml(item.name)}</strong>
-              <div class="subtle">${escapeHtml(item.ticker_code)} / ${escapeHtml(item.market ?? "-")}</div>
+              <div class="subtle">${escapeHtml(publicSecurityCode(item.ticker_code))} / ${escapeHtml(item.market ?? "-")}</div>
               ${item.in_watchlist ? `<div class="subtle">watchlist 登録済み</div>` : ""}
             </div>
-            <button
-              class="result-button"
-              type="button"
-              data-open-ticker="${escapeAttr(item.ticker_code)}"
-            >詳細を見る</button>
+            <div class="action-row">
+              <button
+                class="ghost-button"
+                type="button"
+                data-prepare-portfolio="${escapeAttr(item.ticker_code)}"
+              >保有入力へ</button>
+              <button
+                class="result-button"
+                type="button"
+                data-open-ticker="${escapeAttr(item.ticker_code)}"
+              >詳細を見る</button>
+            </div>
           </article>
         `).join(""));
       };
@@ -3350,7 +3507,7 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
         const quantity = quantityInput.value.trim();
         const averageCost = averageCostInput.value.trim();
         if (!tickerCode || !quantity) {
-          setPortfolioFeedback("ticker と数量は必須です。", "error");
+          setPortfolioFeedback("銘柄コードと数量は必須です。", "error");
           return;
         }
 
@@ -3370,6 +3527,20 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
         } catch (error) {
           setPortfolioFeedback(`保有銘柄の保存に失敗しました: ${error.message || String(error)}`, "error");
         }
+      };
+
+      const preparePortfolioHolding = (tickerCode) => {
+        if (!tickerCode) return;
+        const form = document.getElementById("portfolio-form");
+        const tickerInput = document.getElementById("portfolio-ticker-input");
+        const quantityInput = document.getElementById("portfolio-quantity-input");
+        if (!form || !tickerInput || !quantityInput) return;
+
+        const publicTickerCode = publicSecurityCode(tickerCode);
+        tickerInput.value = publicTickerCode;
+        setPortfolioFeedback(`${publicTickerCode} を選択しました。数量を入力して「保有を保存」を押してください。`);
+        form.scrollIntoView({ behavior: "smooth", block: "center" });
+        quantityInput.focus({ preventScroll: true });
       };
 
       const removePortfolioHolding = async (tickerCode) => {
@@ -3409,7 +3580,7 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
           });
         }
 
-        await loadDashboard(null);
+        await Promise.all([loadDashboard(null), loadStockAiUsage()]);
         renderSearchResults([], "");
       };
 
@@ -3526,6 +3697,14 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
           if (removePortfolioButton) {
             event.preventDefault();
             await removePortfolioHolding(removePortfolioButton.dataset.removePortfolio);
+            return;
+          }
+
+          const preparePortfolioButton = event.target.closest("[data-prepare-portfolio]");
+          if (preparePortfolioButton) {
+            event.preventDefault();
+            event.stopPropagation();
+            preparePortfolioHolding(preparePortfolioButton.dataset.preparePortfolio);
             return;
           }
 

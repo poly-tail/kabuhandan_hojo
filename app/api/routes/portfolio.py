@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -13,7 +13,8 @@ from app.schemas.portfolio import (
     PortfolioImportCsvRequest,
     PortfolioImportCsvResponse,
 )
-from app.schemas.portfolio_ai import PortfolioAiReviewRequest, PortfolioAiReviewResponse
+from app.schemas.portfolio_ai import PortfolioAiReviewRequest, PortfolioAiReviewResponse, PortfolioAiUsageSummary
+from app.services.ai_usage import get_legacy_ai_usage_ledger
 from app.services.portfolio import portfolio_service
 from app.services.portfolio_ai_review import portfolio_ai_review_service
 
@@ -58,6 +59,15 @@ def review_portfolio_with_ai(
     db: Session | None = Depends(get_db),
 ) -> PortfolioAiReviewResponse:
     return portfolio_ai_review_service.review(payload, session=db)
+
+
+@router.get("/api/ai/stock-review/usage", response_model=PortfolioAiUsageSummary)
+def get_stock_review_usage(response: Response) -> PortfolioAiUsageSummary:
+    """Return local usage for the legacy stock-review path only."""
+
+    response.headers["Cache-Control"] = "no-store"
+    settings = get_settings()
+    return get_legacy_ai_usage_ledger().summary(daily_limit=settings.openai_daily_request_limit)
 
 
 @router.delete("/portfolio/{ticker_code}", status_code=status.HTTP_204_NO_CONTENT)

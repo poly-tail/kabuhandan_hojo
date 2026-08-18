@@ -63,15 +63,18 @@ def test_openai_client_returns_completed_non_empty_output_text() -> None:
     assert result.output_text == "疎通成功"
     assert responses.calls == [
         {
-            "model": AI_ANALYSIS_MODEL,
+            "model": "gpt-5.6-terra",
             "instructions": "テスト用instructionsです。",
             "input": "短い疎通確認です。",
             "reasoning": {"effort": "medium"},
             "text": {"verbosity": "medium"},
+            "store": False,
             "timeout": AI_ANALYSIS_TIMEOUT_SECONDS,
             "metadata": {"prompt_version": "test-v1"},
         }
     ]
+    assert AI_ANALYSIS_MODEL == "gpt-5.6-terra"
+    assert STANDARD_PRESET.preset_id.value == "STANDARD"
 
 
 def test_openai_client_rejects_empty_output_text() -> None:

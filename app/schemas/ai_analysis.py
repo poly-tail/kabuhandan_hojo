@@ -12,6 +12,7 @@ from app.ai.presets import AnswerPresetId
 
 
 AiAnalysisStatus = Literal["success", "error"]
+AiAnalysisPersistenceStatus = Literal["saved", "failed"]
 AiAnalysisErrorCode = OpenAIErrorCode | Literal[
     "SECURITY_NOT_FOUND",
     "DATABASE_UNAVAILABLE",
@@ -68,7 +69,9 @@ class AiAnalysisResponse(BaseModel):
     error: AiAnalysisError | None = None
     security: AiSecuritySnapshot | None = None
     openai_response_id: str | None = None
+    persistence_status: AiAnalysisPersistenceStatus | None = None
     saved_at: datetime | None = None
+    persistence_warning: str | None = None
 
 
 class AiSavedAnalysisResponse(BaseModel):

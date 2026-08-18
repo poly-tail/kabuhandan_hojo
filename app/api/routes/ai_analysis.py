@@ -22,7 +22,6 @@ from app.schemas.ai_analysis import (
 )
 from app.services.ai_analysis import AiAnalysisService, SecurityNotFoundError, get_ai_analysis_service
 from app.services.ai_analysis_records import (
-    AiAnalysisPersistenceError,
     AiAnalysisRecordRepository,
     get_ai_analysis_record_repository,
 )
@@ -88,29 +87,16 @@ async def create_ai_analysis(
             message=exc.user_message,
             openai_response_id=exc.response_id,
         )
-    except AiAnalysisPersistenceError as exc:
-        logger.error(
-            "AI analysis persistence failed request_id=%s exception_type=%s",
-            request_id,
-            exc.exception_type,
-        )
-        return _error_response(
-            request_id=request_id,
-            status_code=500,
-            code="PERSISTENCE_ERROR",
-            message="AI分析の回答を保存できませんでした。",
-            openai_response_id=exc.openai_response_id,
-        )
-
     logger.info(
         "AI analysis completed request_id=%s openai_response_id=%s prompt_version=%s "
-        "prompt_module=%s prompt_assets=%s prompt_sha256=%s",
+        "prompt_module=%s prompt_assets=%s prompt_sha256=%s persistence_status=%s",
         request_id,
         result.openai_response_id,
         result.prompt_trace.prompt_version,
         result.prompt_trace.module_id,
         ",".join(result.prompt_trace.asset_ids),
         result.prompt_trace.compiled_prompt_sha256,
+        result.persistence_status,
     )
 
     return AiAnalysisResponse(
@@ -120,7 +106,9 @@ async def create_ai_analysis(
         error=None,
         security=result.security,
         openai_response_id=result.openai_response_id,
+        persistence_status=result.persistence_status,
         saved_at=result.saved_at,
+        persistence_warning=result.persistence_warning,
     )
 
 

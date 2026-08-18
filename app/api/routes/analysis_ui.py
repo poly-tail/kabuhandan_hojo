@@ -122,6 +122,14 @@ def _analysis_shell_html() -> str:
     }
     .answer-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-top: 16px; }
     .saved-status { color: #236b3b; font-weight: 700; }
+    .persistence-warning {
+      margin-top: 14px;
+      padding: 10px 12px;
+      border: 1px solid #d99a25;
+      border-radius: 8px;
+      background: #fff8e6;
+      color: #714b00;
+    }
     details { margin-top: 12px; color: #52606d; font-size: 0.9rem; }
     [hidden] { display: none !important; }
     @media (max-width: 560px) {
@@ -161,6 +169,7 @@ def _analysis_shell_html() -> str:
     <section class="panel" aria-labelledby="answer-heading">
       <h2 id="answer-heading">3. 回答</h2>
       <pre id="answer-text" class="answer"></pre>
+      <div id="analysis-persistence-warning" class="persistence-warning" role="alert" hidden></div>
       <div class="answer-actions">
         <span id="analysis-saved-status" class="saved-status" hidden>この回答はローカルに保存済みです</span>
         <a id="open-saved-analysis" class="button-link" target="_blank" rel="noopener noreferrer" hidden>別ウィンドウで大きく表示</a>
@@ -183,6 +192,7 @@ def _analysis_shell_html() -> str:
       const statusElement = document.getElementById("analysis-status");
       const errorElement = document.getElementById("analysis-error");
       const answerElement = document.getElementById("answer-text");
+      const persistenceWarningElement = document.getElementById("analysis-persistence-warning");
       const savedStatusElement = document.getElementById("analysis-saved-status");
       const openSavedAnalysisLink = document.getElementById("open-saved-analysis");
       const diagnosticsElement = document.getElementById("analysis-diagnostics");
@@ -211,7 +221,9 @@ def _analysis_shell_html() -> str:
         errorElement.hidden = true;
       }
 
-      function clearSavedAnalysisLink() {
+      function clearPersistenceState() {
+        persistenceWarningElement.textContent = "";
+        persistenceWarningElement.hidden = true;
         savedStatusElement.hidden = true;
         openSavedAnalysisLink.hidden = true;
         openSavedAnalysisLink.removeAttribute("href");
@@ -234,7 +246,7 @@ def _analysis_shell_html() -> str:
         selectedSecurityElement.hidden = false;
         searchResults.replaceChildren();
         answerElement.textContent = "";
-        clearSavedAnalysisLink();
+        clearPersistenceState();
         diagnosticsElement.hidden = true;
         diagnosticsText.textContent = "";
         clearError();
@@ -302,7 +314,7 @@ def _analysis_shell_html() -> str:
         updateSubmitState();
         clearError();
         answerElement.textContent = "";
-        clearSavedAnalysisLink();
+        clearPersistenceState();
         diagnosticsElement.hidden = true;
         diagnosticsText.textContent = "";
         setStatus("OpenAIへ送信中…");
@@ -339,23 +351,26 @@ def _analysis_shell_html() -> str:
             return;
           }
 
-          const requestId = String(payload.request_id || "").trim();
-          if (!requestId) {
-            showError("REQUEST_FAILED: 保存済み回答のIDを取得できませんでした。", null);
-            setStatus("失敗しました");
-            return;
-          }
-
           answerElement.textContent = answerText;
-          openSavedAnalysisLink.href = `/ui/analysis/results/${encodeURIComponent(requestId)}`;
-          openSavedAnalysisLink.hidden = false;
-          savedStatusElement.hidden = false;
+          const requestId = String(payload.request_id || "").trim();
+          if (payload.persistence_status === "saved" && requestId) {
+            openSavedAnalysisLink.href = `/ui/analysis/results/${encodeURIComponent(requestId)}`;
+            openSavedAnalysisLink.hidden = false;
+            savedStatusElement.hidden = false;
+          } else {
+            const warning = String(payload.persistence_warning || "").trim()
+              || "回答は生成されましたが、ローカルDBへ保存できませんでした。大画面での再表示は利用できません。";
+            persistenceWarningElement.textContent = warning;
+            persistenceWarningElement.hidden = false;
+          }
           diagnosticsText.textContent = [
-            `request_id: ${requestId}`,
+            `request_id: ${requestId || "未取得"}`,
             `openai_response_id: ${payload.openai_response_id || "未取得"}`
           ].join(" / ");
           diagnosticsElement.hidden = false;
-          setStatus("回答を表示しました");
+          setStatus(payload.persistence_status === "saved"
+            ? "回答を表示しました"
+            : "回答を表示しました（保存できませんでした）");
         } catch (_error) {
           showError("NETWORK_ERROR: APIとの通信に失敗しました。", null);
           setStatus("失敗しました");

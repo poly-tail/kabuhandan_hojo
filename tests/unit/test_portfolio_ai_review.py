@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Generator
+from pathlib import Path
 from types import SimpleNamespace
 import sys
 
@@ -10,18 +11,23 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.core.config import get_settings
+from app.core.config import REPO_ROOT, get_settings
 from app.db.session import get_db, get_engine, get_session_factory
 from app.main import create_app
 from app.models import Base
 from app.schemas.portfolio_ai import PortfolioAiHolding, PortfolioAiReviewRequest, PortfolioAiUsage, PortfolioMarketSnapshot
+from app.services import ai_usage as ai_usage_module
 from app.services.monitoring_runtime import get_monitoring_container, get_monitoring_settings
+from app.services import portfolio_ai_review as portfolio_ai_review_module
 from app.services.portfolio_ai_review import portfolio_ai_review_service
 from kabuhandan_hojo.models import Base as MonitoringBase
 
 
 @pytest.fixture(autouse=True)
-def clear_runtime_state() -> Generator[None, None, None]:
+def clear_runtime_state(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Generator[None, None, None]:
+    monkeypatch.setattr(ai_usage_module, "AI_REVIEW_USAGE_V2_PATH", tmp_path / "ai_review_usage_v2.json")
+    monkeypatch.setattr(portfolio_ai_review_module, "AI_REVIEW_HISTORY_PATH", tmp_path / "ai_review_history.json")
+    monkeypatch.setattr(portfolio_ai_review_module, "AI_REVIEW_CACHE_PATH", tmp_path / "ai_review_cache.json")
     get_settings.cache_clear()
     get_engine.cache_clear()
     get_session_factory.cache_clear()
@@ -64,6 +70,16 @@ def _build_live_client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
 
     app.dependency_overrides[get_db] = override_get_db
     return TestClient(app)
+
+
+def _minimal_success_output(mode: str = "scanner") -> str:
+    return (
+        "{"
+        '"generated_at":"2026-08-17T12:00:00+09:00",'
+        f'"mode":"{mode}",'
+        '"portfolio_summary":{},"stocks":[],"sources":[],"warnings":[],"raw_model_output":null'
+        "}"
+    )
 
 
 def test_ai_review_missing_api_key_returns_json_error(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -468,6 +484,7 @@ def test_ai_review_parse_failure_returns_raw_model_output(monkeypatch: pytest.Mo
                 "include_web_search": False,
             },
         )
+        usage_response = client.get("/api/ai/stock-review/usage")
 
     assert response.status_code == 200
     payload = response.json()
@@ -475,6 +492,10 @@ def test_ai_review_parse_failure_returns_raw_model_output(monkeypatch: pytest.Mo
     assert payload["error"]["code"] == "json_parse_failed"
     assert payload["raw_model_output"] == "not-json"
     assert payload["stocks"] == []
+    usage_payload = usage_response.json()
+    assert usage_payload["today"]["review_runs"] == 0
+    assert usage_payload["today"]["api_calls"] == 1
+    assert usage_payload["today"]["unpriced_api_calls"] == 1
 
 
 def test_ai_review_repairs_long_non_json_output(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -482,7 +503,10 @@ def test_ai_review_repairs_long_non_json_output(monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
 
     def fake_call_openai(**_: object) -> tuple[str, PortfolioAiUsage]:
-        return ("これはJSONではない分析文です。" * 30, PortfolioAiUsage(input_tokens=10, output_tokens=20))
+        return (
+            "これはJSONではない分析文です。" * 30,
+            PortfolioAiUsage(input_tokens=10, cached_input_tokens=0, output_tokens=20),
+        )
 
     def fake_repair(**_: object) -> tuple[str, PortfolioAiUsage]:
         return (
@@ -515,7 +539,7 @@ def test_ai_review_repairs_long_non_json_output(monkeypatch: pytest.MonkeyPatch)
               "raw_model_output": null
             }
             """,
-            PortfolioAiUsage(input_tokens=3, output_tokens=4),
+            PortfolioAiUsage(input_tokens=3, cached_input_tokens=0, output_tokens=4),
         )
 
     monkeypatch.setattr(portfolio_ai_review_service, "_call_openai", fake_call_openai)
@@ -541,13 +565,20 @@ def test_ai_review_repairs_long_non_json_output(monkeypatch: pytest.MonkeyPatch)
                 "use_cache": False,
             },
         )
+        usage_response = client.get("/api/ai/stock-review/usage")
 
     assert response.status_code == 200
     payload = response.json()
     assert payload["status"] == "success"
     assert payload["portfolio_summary"]["overall_view"] == "repair ok"
     assert payload["actual_usage"]["input_tokens"] == 13
+    assert payload["actual_usage"]["api_calls"] == 2
     assert any("JSON整形リトライ" in warning for warning in payload["warnings"])
+    usage_payload = usage_response.json()
+    assert usage_payload["today"]["review_runs"] == 1
+    assert usage_payload["today"]["api_calls"] == 2
+    assert usage_payload["today"]["input_tokens"] == 13
+    assert usage_payload["today"]["output_tokens"] == 24
 
 
 def test_ai_review_displays_raw_output_when_repair_fails(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -663,3 +694,172 @@ def test_openai_quota_error_message_is_specific() -> None:
 
     assert "利用上限" in message
     assert "請求設定" in message
+
+
+def test_five_stock_scan_counts_as_one_review_and_usage_endpoint_is_not_cached(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("APP_USE_MOCK", "true")
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setenv("OPENAI_DAILY_REQUEST_LIMIT", "300")
+    production_v1_path = REPO_ROOT / "data" / "ai_review_usage.json"
+    production_v2_path = REPO_ROOT / "data" / "ai_review_usage_v2.json"
+    production_v1_before = production_v1_path.read_bytes() if production_v1_path.exists() else None
+    production_v2_before = production_v2_path.read_bytes() if production_v2_path.exists() else None
+
+    def fake_call_openai(**_: object) -> tuple[str, PortfolioAiUsage]:
+        return (
+            _minimal_success_output("scanner"),
+            PortfolioAiUsage(
+                input_tokens=1_000,
+                cached_input_tokens=100,
+                output_tokens=200,
+                reasoning_tokens=50,
+            ),
+        )
+
+    monkeypatch.setattr(portfolio_ai_review_service, "_call_openai", fake_call_openai)
+    holdings = [
+        {
+            "ticker": f"{7000 + index}",
+            "name": f"銘柄{index}",
+            "market": "TSE",
+            "quantity": 1,
+            "average_price": 1000,
+        }
+        for index in range(1, 6)
+    ]
+
+    with TestClient(create_app()) as client:
+        request_payload = {
+            "mode": "scanner",
+            "target": "selected",
+            "holdings": holdings,
+            "include_web_search": False,
+            "save_result": False,
+            "use_cache": False,
+        }
+        response = client.post("/api/ai/stock-review", json=request_payload)
+        second_response = client.post("/api/ai/stock-review", json=request_payload)
+        usage_response = client.get("/api/ai/stock-review/usage")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "success"
+    assert second_response.status_code == 200
+    assert second_response.json()["status"] == "success"
+    assert usage_response.status_code == 200
+    assert usage_response.headers["cache-control"] == "no-store"
+    usage_payload = usage_response.json()
+    assert usage_payload["scope"] == "legacy_stock_review"
+    assert usage_payload["daily_limit"] == 300
+    assert usage_payload["remaining_today"] == 298
+    assert usage_payload["today"]["review_runs"] == 2
+    assert usage_payload["today"]["api_calls"] == 2
+    assert usage_payload["today"]["input_tokens"] == 2_000
+    assert usage_payload["today"]["cached_input_tokens"] == 200
+    assert usage_payload["today"]["estimated_cost_usd"] > 0
+    production_v1_after = production_v1_path.read_bytes() if production_v1_path.exists() else None
+    production_v2_after = production_v2_path.read_bytes() if production_v2_path.exists() else None
+    assert production_v1_after == production_v1_before
+    assert production_v2_after == production_v2_before
+
+
+def test_daily_quota_allows_the_300th_review_and_rejects_the_next_before_openai(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("APP_USE_MOCK", "true")
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setenv("OPENAI_DAILY_REQUEST_LIMIT", "300")
+    ledger = ai_usage_module.get_legacy_ai_usage_ledger()
+    for _ in range(299):
+        ledger.record_review_success()
+
+    openai_calls = 0
+
+    def fake_call_openai(**_: object) -> tuple[str, PortfolioAiUsage]:
+        nonlocal openai_calls
+        openai_calls += 1
+        return (
+            _minimal_success_output("scanner"),
+            PortfolioAiUsage(
+                input_tokens=100,
+                cached_input_tokens=0,
+                output_tokens=20,
+            ),
+        )
+
+    monkeypatch.setattr(portfolio_ai_review_service, "_call_openai", fake_call_openai)
+    request_payload = {
+        "mode": "scanner",
+        "target": "selected",
+        "holdings": [
+            {
+                "ticker": "7203",
+                "name": "トヨタ自動車",
+                "market": "TSE",
+                "quantity": 1,
+                "average_price": 1000,
+            }
+        ],
+        "include_web_search": False,
+        "save_result": False,
+        "use_cache": False,
+    }
+
+    with TestClient(create_app()) as client:
+        allowed_response = client.post("/api/ai/stock-review", json=request_payload)
+        rejected_response = client.post("/api/ai/stock-review", json=request_payload)
+        usage_response = client.get("/api/ai/stock-review/usage")
+
+    assert allowed_response.status_code == 200
+    assert allowed_response.json()["status"] == "success"
+    assert rejected_response.status_code == 200
+    assert rejected_response.json()["status"] == "daily_limit_exceeded"
+    assert openai_calls == 1
+    usage_payload = usage_response.json()
+    assert usage_payload["today"]["review_runs"] == 300
+    assert usage_payload["today"]["api_calls"] == 1
+    assert usage_payload["remaining_today"] == 0
+
+
+def test_extract_usage_counts_actual_web_search_items_instead_of_configured_maximum(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeResponses:
+        def create(self, **_: object) -> SimpleNamespace:
+            return SimpleNamespace(
+                output_text=_minimal_success_output("analyst"),
+                output=[
+                    SimpleNamespace(type="web_search_call"),
+                    SimpleNamespace(type="message"),
+                ],
+                usage=SimpleNamespace(
+                    input_tokens=120,
+                    input_tokens_details=SimpleNamespace(cached_tokens=20),
+                    output_tokens=30,
+                    output_tokens_details=SimpleNamespace(reasoning_tokens=10),
+                ),
+            )
+
+    class FakeOpenAI:
+        def __init__(self, api_key: str) -> None:
+            assert api_key == "test-key"
+            self.responses = FakeResponses()
+
+    monkeypatch.setitem(sys.modules, "openai", SimpleNamespace(OpenAI=FakeOpenAI))
+
+    _, usage = portfolio_ai_review_service._call_openai(
+        holdings=[PortfolioAiHolding(ticker="7203", name="トヨタ自動車", market="TSE", quantity=1)],
+        market_snapshots=[PortfolioMarketSnapshot(ticker="7203")],
+        options=PortfolioAiReviewRequest(mode="analyst", include_web_search=True, max_web_search_calls=5),
+        api_key="test-key",
+        model="gpt-5.4",
+        reasoning_effort="medium",
+    )
+
+    assert usage.api_calls == 1
+    assert usage.input_tokens == 120
+    assert usage.cached_input_tokens == 20
+    assert usage.output_tokens == 30
+    assert usage.reasoning_tokens == 10
+    assert usage.web_search_calls == 1

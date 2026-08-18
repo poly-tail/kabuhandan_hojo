@@ -493,7 +493,7 @@ def estimate_openai_cost(mode: AiReviewMode, stock_count: int, include_web_searc
     per_stock_by_mode = {"scanner": 0.002, "analyst": 0.007, "judge": 0.005, "critical": 0.012}
     estimate = base_by_mode.get(mode, 0.02) + per_stock_by_mode.get(mode, 0.004) * stock_count
     if include_web_search:
-        estimate += 0.008 * max_web_search_calls
+        estimate += 0.01 * max_web_search_calls
     return round(estimate, 4)
 
 

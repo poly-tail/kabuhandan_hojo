@@ -1,19 +1,48 @@
 # kabuhandan_hojo Phase 0-2
 
-## 2026-08-17 AI回答保存・大画面表示・prompt更新
+## 2026-08-18 銘柄検索から保有入力
 
-- canonical `POST /api/ai/analyses` の成功回答をSQLite / PostgreSQLの `ai_analysis_record` に自動保存します。POSTのHTTP 200は保存完了を含み、保存できない場合はrollbackして `PERSISTENCE_ERROR` を返します。
-- 保存済み回答は `GET /api/ai/analyses/{request_id}` で再取得できます。分析画面の成功後に「別ウィンドウで大きく表示」が現れ、`GET /ui/analysis/results/{request_id}` の幅広いプレーンテキストreaderを開きます。
+- dashboardの銘柄検索は、銘柄名、数字コード、英字を含むコードに対応します。たとえば`キオクシア`または公開コード`285A`で、同期済みmasterのキオクシアホールディングスを検索できます。
+- 各検索結果に`保有入力へ`と`詳細を見る`を表示します。`保有入力へ`はPortfolio panelへ銘柄コードを入れて数量欄へ移動するだけで、自動保存しません。数量を入力し、必要なら平均取得単価・メモを追加してから`保有を保存`を押してください。
+- J-Quants masterが英字を含むコードを末尾`0`付きraw identifier（例:`285A0`）で保持している場合、検索結果の表示と保有入力は公開コード`285A`にします。詳細画面は登録済みmasterを開くためraw identifierを維持します。
+- `POST /portfolio`は公開4文字コード`285A`を、一意な既存raw master`285A0`へ解決します。これにより`285A`という別placeholder masterの重複作成を防ぎます。既存の5文字identifier入力も引き続き利用できます。
+- キオクシアが検索結果へ出ない環境では、dashboardの`銘柄DB更新`でJ-Quants全上場masterを同期してください。全件同期には`JQUANTS_API_KEY`が必要です。
+
+## 2026-08-17 legacy AI利用量・概算額
+
+- dashboardのlegacy stock-review日次上限を50回から300回へ変更しました。1回は銘柄数に関係なく、正常完了した一括レビュー1件です。5銘柄をまとめて軽量スキャンしても1回です。
+- OpenAI Responses APIのprovider callは`api_calls`として別に集計します。JSON整形repair等により、1レビューでprovider callが複数になる場合があります。
+- 300回は成功した一括reviewの運用上限で、provider call数や費用のhard capではありません。OpenAI/最終parse失敗は成功review回数を消費せず、provider attemptの原子的予約やhard cost ceilingは今後の課題です。
+- `GET /api/ai/stock-review/usage`は、JSTの本日・今月について、成功レビュー回数、OpenAI呼出回数、残数、token使用量、実Web検索回数、USD概算額、金額未算定callを返します。
+- dashboardは起動時と各AIレビュー終了時に利用量を更新し、「本日 成功レビュー x / 300回」「今月 成功レビュー x回」、OpenAI呼出回数、概算額を表示します。`database`等の内部値は「対象: 実DB保有銘柄」等の利用者向けlabelへ変換します。
+- 概算はOpenAIが返したinput / cached input / output tokenと実Web検索callを、versionedな2026-08-17時点のstandard pricingへ適用した参考値です。正式な請求額ではなく、OpenAI PlatformのUsage Dashboardと請求情報が正本です。算定できないcallは0円とせず件数を表示します。
+- usage正本はgit管理外の`data/ai_review_usage_v2.json`です。旧`data/ai_review_usage.json`はtest汚染の可能性があるため移行せず、更新前の回数・金額は新集計に含めません。ledgerへAPIキー、prompt、質問、回答は保存しません。
+- このquotaと集計はlegacy `/api/ai/stock-review`系だけが対象です。canonical `/api/ai/analyses`のmodel、`STANDARD`、保存、error契約は変更しません。
+
+## 2026-08-17 canonical AI安全性・保存失敗処理・prompt表記修正
+
+- canonical `POST /api/ai/analyses` のOpenAI Responses requestは常に`store=false`を送ります。これはResponses APIのApplication State保存を無効化する設定であり、組織全体のZero Data Retentionやabuse monitoring logの非保持まで保証するものではありません。保持方針は[OpenAI公式のデータ管理資料](https://developers.openai.com/api/docs/guides/your-data)を確認してください。
+- OpenAI回答生成とローカルSQL保存を別の結果として返します。生成成功後に保存できなかった場合もHTTP 200、`status=success`、非空`answer_text`を返し、`persistence_status=failed`と安全なwarningを付けます。OpenAIを再呼び出ししません。
+- 保存成功時だけ「保存済み」と「別ウィンドウで大きく表示」を出します。保存失敗時は回答本文とwarningだけを表示し、そのrequest IDは保存詳細APIではnot foundになります。
+- API runnerの既定bindは`127.0.0.1`です。LAN確認は信頼できる閉じたネットワークでのみ、明示的に`python scripts/run_api.py --host 0.0.0.0`を使います。現在は認証、利用者分離、canonical endpointのrate limitがないため、Internetへ直接公開しないでください。Android対応や外部公開の前に認証、HTTPS、rate limitが必要です。
+- Docker Composeの公開portも既定でhostの`127.0.0.1`だけにbindします。container内部のUvicorn bindはport forwardingのため`0.0.0.0`のままです。
+- DB schema初期化はFastAPI lifespanだけで1回実行し、`create_app()`からDB副作用を除きました。
+- active promptは`2026.08.18`です。immutableなv2026.08.17 assetを残し、runtime入力も含めて根拠labelを`【V】確認済み`、`【E】推定`、`【U】未確認`へ統一します。
+
+## AI回答保存・大画面表示
+
+- canonical `POST /api/ai/analyses` の成功回答をSQLite / PostgreSQLの `ai_analysis_record` に自動保存します。保存の成否は`persistence_status`で回答生成の成否と分離します。
+- 保存済み回答は `GET /api/ai/analyses/{request_id}` で再取得できます。保存成功後にだけ「別ウィンドウで大きく表示」が現れ、`GET /ui/analysis/results/{request_id}` の幅広いプレーンテキストreaderを開きます。
 - AI送信中は銘柄検索・銘柄選択・質問編集をロックし、送信対象と表示先が途中で入れ替わる競合を防ぎます。canonical APIはFastAPIの入力検証エラーを含む全responseへ`Cache-Control: no-store`を付与します。
 - 保存するのは質問、回答、銘柄snapshot、生成設定、OpenAI response ID、prompt provenanceです。APIキー、prompt全文、providerのraw response / errorは保存しません。
-- 添付prompt sourceを v2026.08.17へ更新し、「銘柄名（銘柄コード）」の併記と、銘柄名・コードの分離入力を反映しました。共通OS、必要な共通入力、no-tools制約、module 3.1だけを使い、3.2〜3.14やJSON Schemaは送りません。
+- prompt sourceの選択範囲はv2026.08.17由来の共通OS、必要な共通入力、no-tools制約、module 3.1だけを維持します。active bundleは表記正規化版v2026.08.18で、3.2〜3.14やJSON Schemaは送りません。
 - 保存済み回答APIには認証・利用者分離・削除・保持期限がまだありません。ローカルDBはGit管理外ですが、現状はtrusted local環境だけで利用してください。
 
-## 2026-08-17 仕様baseline更新
+## 2026-08-18 仕様baseline更新
 
-- 現行正本を要件 v1.3、API v1.6、画面 v1.8へ更新し、個別銘柄AI回答の永続保存、大画面reader、prompt v2026.08.17、legacy Portfolio AIとの境界を反映しました。
+- 現行正本を要件 v1.6、API v1.9、画面 v2.1へ更新し、銘柄名・数字/英字コード検索、検索結果から保有入力への非保存導線、4文字公開コードから一意なJ-Quants raw identifierへのportfolio alias解決を反映しました。v1.5 / v1.8 / v2.0までのAI・usage契約も累積継承します。
 - 仕様版の対応、変更理由、互換性、非対象、既知制約は `docs/spec_change_history.md` で追跡します。
-- 旧versioned文書と旧AI endpointは履歴・互換機能として保持し、今回の文書更新ではコードを変更していません。
+- 旧versioned文書とlegacy AI endpointは履歴・互換機能として保持しています。
 
 ## 2026-08-17 定型prompt最小統合
 
@@ -21,7 +50,7 @@
 - `app/prompts/individual_security/` がversioned Markdown asset、manifest、`IndividualSecurityPromptCompiler`を管理します。合成順は共通OS、共通入力ルール、Web・外部市場データなしの実行制約、3.1用途module、銘柄context、自由質問です。
 - OpenAI requestの`instructions`へ共通規則と3.1、`input`へ銘柄contextと質問を渡します。prompt version、使用asset、module ID、compiled SHA-256はOpenAI response metadataへ記録し、prompt全文・質問はmetadata、公開API response、browserへ出しません。
 - 固定model `gpt-5.6-terra`、`STANDARD`、`reasoning.effort=medium`、`text.verbosity=medium`、`response.output_text`方式を維持します。Web検索、Structured Outputs、JSON修復、fallbackは追加していません。
-- 比較用の代表質問10件は `tests/fixtures/ai_analysis/individual_security_questions_v2026_08_17.json` にあります。
+- 現行promptの比較用代表質問10件は `tests/fixtures/ai_analysis/individual_security_questions_v2026_08_18.json` にあり、v2026.08.17 fixtureも再現比較用に保持します。
 
 ## 2026-08-17 AI最小縦スライス
 
@@ -40,7 +69,7 @@
 - `prompt_only` は Prompt Registry の全文を使い、OpenAI API を呼ばず、ChatGPTへ手動で貼り付けるプロンプトだけを生成します。ChatGPT Web画面の自動操作、自動投稿、回答取得は実装していません。
 - 用途別に `OPENAI_MODEL_SCANNER` / `OPENAI_MODEL_ANALYST` / `OPENAI_MODEL_JUDGE` / `OPENAI_MODEL_CRITICAL` と対応する `OPENAI_REASONING_*` を設定できます。
 - `OPENAI_ENABLE_WEB_SEARCH=true` を既定にし、`analyst` / `judge` / `critical` はWeb検索ONを標準にします。`scanner` はOFFでも実行でき、その場合は「最新Web確認なし」のwarningを返します。
-- 1回あたりの対象銘柄数、日次実行回数、推定コスト、同一入力キャッシュ、ローカルJSON履歴保存を追加しました。
+- 1回あたりの対象銘柄数、日次実行回数、推定コスト、ローカルキャッシュ、ローカルJSON履歴保存を持ちます。現在の日次既定値は300で、成功した一括reviewを銘柄数に関係なく1回と数えます。
 - mock holdings は 7011 / 6758 / 9984 / 7974 / 4063 / 6857 / 3397 の7件、mock candidates は 6857 / 4063 の2件です。実DB保有銘柄がある場合は実DBを優先します。
 - `target=mock` と mock fallback はOpenAI APIを呼ばず、課金なしのローカルサンプル応答を返します。
 
@@ -125,6 +154,8 @@ python -m pip install -r requirements-dev.txt
 3. 必要に応じて環境変数を設定します。
 
 - `APP_USE_MOCK=false`
+- `API_HOST=127.0.0.1`
+- `API_PORT=8000`
 - `OPENAI_API_KEY=...`
 - `OPENAI_MODEL=gpt-5.5`
 - `OPENAI_REASONING_EFFORT=high`
@@ -139,7 +170,7 @@ python -m pip install -r requirements-dev.txt
 - `OPENAI_ENABLE_WEB_SEARCH=true`
 - `OPENAI_MAX_WEB_SEARCH_CALLS=5`
 - `OPENAI_MAX_STOCKS_PER_REQUEST=20`
-- `OPENAI_DAILY_REQUEST_LIMIT=50`
+- `OPENAI_DAILY_REQUEST_LIMIT=300`
 - `OPENAI_DEFAULT_VERBOSITY=medium`
 - `OPENAI_CRITICAL_CONFIRMATION_REQUIRED=true`
 - `JQUANTS_API_KEY=...`
@@ -157,6 +188,14 @@ python scripts/run_api.py --reload
 
 `--reload` は開発用です。不要なら外して構いません。
 `scripts/` ディレクトリから `py -3 run_api.py --reload` で起動しても、runner が repo ルートへ移動してから設定を読み込みます。
+
+既定のlisten先はこのPCだけから到達できる`127.0.0.1:8000`です。LANまたはAndroid端末から一時的に確認する場合は、信頼できる閉じたLANでだけ次を明示してください。
+
+```bash
+python scripts/run_api.py --host 0.0.0.0
+```
+
+`0.0.0.0`はLAN内の他端末から到達可能になります。現在は認証、利用者分離、canonical endpointのrate limit、HTTPS終端がないため、Internetへ直接公開しないでください。Android対応や外部公開の前に認証、HTTPS、rate limitを実装してください。
 
 ## 起動モード
 
@@ -185,7 +224,7 @@ python scripts/run_api.py --reload --mock
 
 - `GET /health`
 - `POST /api/ai/analyses`
-  - 個別銘柄1件の最小AI分析入口です。現在は `preset=STANDARD` のみ受け付け、成功回答をローカルDBへ自動保存します。
+  - 個別銘柄1件の最小AI分析入口です。現在は `preset=STANDARD` のみ受け付けます。回答生成成功とローカル保存結果は別fieldで返し、保存失敗でも生成済み本文を返します。
 - `GET /api/ai/analyses/{request_id}`
   - canonical経路で保存した回答1件をUUIDで再取得します。回答一覧は提供しません。
 - `GET /watchlist`
@@ -195,6 +234,8 @@ python scripts/run_api.py --reload --mock
 - `POST /portfolio/import/csv`
 - `POST /api/ai/stock-review`
   - 5モードのAI分析入口です。`prompt_only` ではOpenAI APIを呼ばず、手動投入用プロンプトを返します。
+- `GET /api/ai/stock-review/usage`
+  - legacy stock-reviewだけのJST本日・今月の成功review数、provider call数、残数、token由来USD概算、未算定call、pricing provenanceを返します。正式請求額はOpenAI Platformを確認してください。
 - `POST /portfolio/ai-review`
   - 互換入口です。内部的には multi-mode AI review service を使います。
 - `DELETE /portfolio/{ticker_code}`

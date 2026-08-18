@@ -1,6 +1,6 @@
 flowchart TD
     start["User runs API command"]
-    runner["scripts/run_api.py"]
+    runner["scripts/run_api.py\ndefault 127.0.0.1"]
     parse["parse_args()"]
     branch{"--mock specified?"}
     mockEnv["set APP_USE_MOCK=true"]
@@ -23,11 +23,12 @@ flowchart TD
     uiShell["HTML shell fetches\n/health /watchlist /dashboard /screening"]
     analysisUi["GET /ui/analysis\nselect one security + question"]
     analysisPost["POST /api/ai/analyses"]
-    promptCompiler["IndividualSecurityPromptCompiler\nv2026.08.17 + module 3.1"]
-    openai["OpenAI Responses API\ngpt-5.6-terra / STANDARD"]
+    promptCompiler["IndividualSecurityPromptCompiler\nv2026.08.18 + module 3.1"]
+    openai["OpenAI Responses API\ngpt-5.6-terra / STANDARD / store=false"]
     validate["completed + response ID\nnon-empty output_text"]
     save["transaction save\nai_analysis_record"]
-    answer["plain answer + saved request_id"]
+    answer["plain answer + persistence result"]
+    saveWarning["plain answer + save warning\nno reader link"]
     reader["GET /ui/analysis/results/{request_id}"]
     savedGet["GET /api/ai/analyses/{request_id}"]
     savedAnswer["saved question + answer\ntextContent / pre-wrap"]
@@ -67,7 +68,7 @@ flowchart TD
     validate -->|valid| save
     validate -->|invalid/error| analysisError
     save -->|commit| answer
-    save -->|rollback| analysisError
+    save -->|rollback| saveWarning
     answer --> reader
     reader --> savedGet
     savedGet --> savedAnswer

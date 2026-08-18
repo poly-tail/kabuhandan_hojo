@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     app_version: str = Field(default="0.1.0", alias="APP_VERSION")
     app_use_mock: bool = Field(default=False, alias="APP_USE_MOCK")
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
-    api_host: str = Field(default="0.0.0.0", alias="API_HOST")
+    api_host: str = Field(default="127.0.0.1", alias="API_HOST")
     api_port: int = Field(default=8000, alias="API_PORT")
     database_url: str = Field(default="sqlite:///./data/kabuhandan_hojo.db", alias="DATABASE_URL")
     openai_api_key: str | None = Field(default=None, alias="OPENAI_API_KEY")
@@ -61,7 +61,7 @@ class Settings(BaseSettings):
     openai_enable_web_search: bool = Field(default=True, alias="OPENAI_ENABLE_WEB_SEARCH")
     openai_max_web_search_calls: int = Field(default=5, ge=0, alias="OPENAI_MAX_WEB_SEARCH_CALLS")
     openai_max_stocks_per_request: int = Field(default=20, ge=1, alias="OPENAI_MAX_STOCKS_PER_REQUEST")
-    openai_daily_request_limit: int = Field(default=50, ge=1, alias="OPENAI_DAILY_REQUEST_LIMIT")
+    openai_daily_request_limit: int = Field(default=300, ge=1, alias="OPENAI_DAILY_REQUEST_LIMIT")
     openai_default_verbosity: str = Field(default="medium", alias="OPENAI_DEFAULT_VERBOSITY")
     openai_critical_confirmation_required: bool = Field(default=True, alias="OPENAI_CRITICAL_CONFIRMATION_REQUIRED")
 

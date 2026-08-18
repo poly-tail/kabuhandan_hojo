@@ -1,6 +1,6 @@
 # API Spec Current
 
-> 現在の正本: `api_spec_v1.6.md`
+> 現在の正本: `api_spec_v1.9.md`
 
 ## 概要
 
@@ -9,20 +9,25 @@
 
 ## 現在値
 
-- API仕様書: v1.6
-- 更新日: 2026-08-17
-- 変更概要: canonical成功回答の原子的なSQL保存、UUID詳細GET、大画面reader、prompt v2026.08.17を追加
+- API仕様書: v1.9
+- 更新日: 2026-08-18
+- 変更概要: `GET /securities/search`の数字/英字code対応と、`POST /portfolio`の一意なJ-Quants raw code aliasを追加
 
 ## 主な変更点
 
 - `/ui/dashboard/data` を中心にした UI view model 契約
+- 銘柄名、数字code、英字を含むcodeを検索し、raw master identifierを返す`GET /securities/search`
+- `POST /portfolio`の完全一致優先と、一意な`<4文字>0` aliasによる既存master解決
+- legacy stock-reviewの`review_runs`とprovider `api_calls`を分離したusage API契約
+- `openai-standard-2026-08-17`によるtoken/Web検索概算と`unpriced_api_calls`
 - live mode の no-mock 方針
 - J-Quants market proxy を使う市場地合い表示
 - `POST /api/ai/analyses`、`GET /api/ai/analyses/{request_id}`、`GET /ui/analysis/results/{request_id}`
 - `gpt-5.6-terra` / `STANDARD` / medium reasoning / medium verbosityの固定契約
 - `response.status`、response ID、非空 `response.output_text` のfail-closed検証
-- prompt v2026.08.17、銘柄名（銘柄コード）規則、用途module 3.1、asset/hash trace
-- 成功responseのSQL保存、保存失敗時のrollback / `PERSISTENCE_ERROR`、未知UUIDの`ANALYSIS_NOT_FOUND`
+- prompt v2026.08.18、正式根拠label、用途module 3.1、asset/source/hash trace
+- `store=false`、保存結果field、保存失敗時もHTTP 200 + 生成済み本文、未知UUIDの`ANALYSIS_NOT_FOUND`
+- `127.0.0.1`既定と明示LAN bind、lifespan-only `init_db()`
 - validation errorを含む保存API / HTMLの`Cache-Control: no-store`と、prompt全文・APIキー・provider raw payloadの非保存
 - typed OpenAI errorと、prompt全文・質問・APIキーの非露出
 - 新経路ではmock / cache / fallback / Web検索 / Structured Outputsを使用しない

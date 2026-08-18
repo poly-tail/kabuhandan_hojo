@@ -1,0 +1,84 @@
+{
+  "fixture_version": "2026.08.18-mvp1",
+  "prompt_version": "2026.08.18",
+  "security_code": "7203",
+  "human_review_dimensions": [
+    "観点の広さ",
+    "反証条件",
+    "情報不足の扱い",
+    "根拠ラベル表記",
+    "冗長性"
+  ],
+  "cases": [
+    {
+      "id": "buy_decision",
+      "title": "現在価格での買い判断",
+      "question": "現在与えられている情報だけで、この銘柄は今買い候補ですか。買う、待つ、no_tradeの条件と不足情報を分けてください。",
+      "coverage": ["buy_decision", "risk", "insufficient_data", "no_trade"],
+      "review_checks": ["時間軸と条件を分ける", "現在価格を創作しない", "見送る条件を示す"]
+    },
+    {
+      "id": "post_earnings",
+      "title": "決算後判断",
+      "question": "決算発表後の売買判断をするには何を確認すべきですか。決算内容、事前期待、織り込み、株価反応を分け、確認済み事実がない項目は推測しないでください。",
+      "coverage": ["post_earnings", "pricing", "events", "insufficient_data"],
+      "review_checks": ["決算内容と株価反応を分離する", "潜在期待と織り込みを扱う", "未提供数値を創作しない"]
+    },
+    {
+      "id": "factor_separation",
+      "title": "市場要因と個別要因の分離",
+      "question": "値動きが個別要因か市場・セクター要因かを、現時点で分かることと追加確認事項に分けてください。為替と金利も必要な範囲で扱ってください。",
+      "coverage": ["factor_separation", "market", "sector", "macro"],
+      "review_checks": ["個別・市場・セクターを分離する", "為替・金利を未確認として扱う", "主因を断定しない"]
+    },
+    {
+      "id": "momentum",
+      "title": "モメンタム",
+      "question": "上昇モメンタムが継続する条件と失速の反証条件を示してください。未提供の価格、出来高、テクニカル指標は作らないでください。",
+      "coverage": ["momentum", "technical", "falsification"],
+      "review_checks": ["継続条件と失速条件を分ける", "未提供指標を創作しない", "確認すべきデータを示す"]
+    },
+    {
+      "id": "supply_demand",
+      "title": "需給と信用状況",
+      "question": "需給面で買いを支持・否定する条件を整理し、信用残、空売り、出来高など未取得データを区別してください。",
+      "coverage": ["supply_demand", "margin", "short_interest", "insufficient_data"],
+      "review_checks": ["需給項目を識別する", "未知の数値を推測しない", "判断変更条件を示す"]
+    },
+    {
+      "id": "events",
+      "title": "イベント管理",
+      "question": "次回決算まで保有を検討する場合、決算、日銀、為替、指数イベントをどう管理すべきですか。未確認の日付は作らないでください。",
+      "coverage": ["events", "risk", "macro", "insufficient_data"],
+      "review_checks": ["イベント前後の条件を分ける", "未確認日付を創作しない", "再評価タイミングを示す"]
+    },
+    {
+      "id": "risk",
+      "title": "時間軸別リスク",
+      "question": "この銘柄を保有する場合の短期、中期、中長期、長期の主なリスクと撤退条件を整理してください。",
+      "coverage": ["risk", "time_horizon", "exit_conditions"],
+      "review_checks": ["時間軸を分離する", "価格だけでない撤退条件を示す", "許容損失未入力を明示する"]
+    },
+    {
+      "id": "falsification",
+      "title": "強気仮説の反証",
+      "question": "強気仮説が誤りだと判断する反証条件を、業績、価格、需給、材料、地合いに分け、再評価条件も示してください。",
+      "coverage": ["falsification", "bull_case", "risk", "reassessment"],
+      "review_checks": ["観測可能な反証条件を出す", "強気仮説を無条件採用しない", "再評価行動を示す"]
+    },
+    {
+      "id": "insufficient_data",
+      "title": "情報不足の境界",
+      "question": "現在値、決算数値、チャート、需給データがない状態で判断可能な範囲と不可能な範囲を、【V】確認済み、【E】推定、【U】未確認に分けてください。",
+      "coverage": ["insufficient_data", "verification", "data_boundary"],
+      "review_checks": ["確認済み・推定・未確認を正式labelで区別する", "不足情報を優先順位化する", "推測で穴埋めしない"]
+    },
+    {
+      "id": "no_trade",
+      "title": "no-trade判断",
+      "question": "根拠が不足している場合、no_tradeまたはinsufficient_dataにすべき理由と、再検討に必要な最小データを示してください。",
+      "coverage": ["no_trade", "insufficient_data", "next_check"],
+      "review_checks": ["無理に売買結論を出さない", "最小の追加データを示す", "再検討条件を示す"]
+    }
+  ]
+}

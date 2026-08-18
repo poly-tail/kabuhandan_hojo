@@ -21,6 +21,13 @@ EXPECTED_COMPILE_ORDER = (
     "execution_constraints",
     "task_module",
 )
+LEGACY_VERIFICATION_BRACKETS = ("\u3016", "\u3017")
+VERIFICATION_BRACKET_TRANSLATION = str.maketrans(
+    {
+        "\u3016": "\u3010",
+        "\u3017": "\u3011",
+    }
+)
 
 
 class PromptConfigurationError(RuntimeError):
@@ -108,7 +115,7 @@ class IndividualSecurityPromptCompiler:
     def compile(self, *, security: SecurityPromptContext, question: str) -> CompiledPrompt:
         """Compile common OS, one task module, security context, and user question."""
 
-        normalized_question = question.strip()
+        normalized_question = _canonicalize_verification_brackets(question.strip())
         if not normalized_question:
             raise ValueError("question must not be blank")
 
@@ -120,6 +127,10 @@ class IndividualSecurityPromptCompiler:
             for asset in (self._assets[role] for role in EXPECTED_COMPILE_ORDER)
         ]
         instructions = "\n\n".join(instruction_parts)
+        if _contains_legacy_verification_brackets(instructions):
+            raise PromptConfigurationError(
+                "individual-security prompt instructions contain legacy verification brackets"
+            )
         input_text = self._build_runtime_input(security=security, question=normalized_question)
         compiled_sha256 = hashlib.sha256(
             f"{instructions}\n\n{input_text}".encode("utf-8")
@@ -171,7 +182,7 @@ class IndividualSecurityPromptCompiler:
             ],
         }
         question_payload = {"question": question}
-        return (
+        runtime_input = (
             "<security_context>\n"
             + json.dumps(context, ensure_ascii=False, indent=2)
             + "\n</security_context>\n\n"
@@ -179,6 +190,7 @@ class IndividualSecurityPromptCompiler:
             + json.dumps(question_payload, ensure_ascii=False, indent=2)
             + "\n</user_question>"
         )
+        return _canonicalize_verification_brackets(runtime_input)
 
     @staticmethod
     def _load_manifest() -> dict[str, Any]:
@@ -193,9 +205,25 @@ class IndividualSecurityPromptCompiler:
         task_module = manifest.get("task_module") or {}
         if task_module.get("module_id") != "3.1" or task_module.get("asset_role") != "task_module":
             raise PromptConfigurationError("individual-security task module must be exactly 3.1")
-        source_sha256 = str((manifest.get("source") or {}).get("sha256") or "")
+        source = manifest.get("source") or {}
+        source_sha256 = str(source.get("sha256") or "").upper()
         if len(source_sha256) != 64:
             raise PromptConfigurationError("individual-security source hash is invalid")
+        source_path = PurePosixPath(str(source.get("path") or ""))
+        if source_path.is_absolute() or ".." in source_path.parts or not source_path.parts:
+            raise PromptConfigurationError("individual-security source path is invalid")
+        try:
+            source_payload = resources.files(PROMPT_PACKAGE).joinpath(*source_path.parts).read_bytes()
+        except FileNotFoundError as exc:
+            raise PromptConfigurationError("individual-security source descriptor is missing") from exc
+        if hashlib.sha256(source_payload).hexdigest().upper() != source_sha256:
+            raise PromptConfigurationError("individual-security source hash mismatch")
+        try:
+            source_content = source_payload.decode("utf-8").strip()
+        except UnicodeDecodeError as exc:
+            raise PromptConfigurationError("individual-security source descriptor is not UTF-8") from exc
+        if not source_content or not str(source.get("title") or "").strip():
+            raise PromptConfigurationError("individual-security source descriptor is empty")
         return manifest
 
     @staticmethod
@@ -223,6 +251,10 @@ class IndividualSecurityPromptCompiler:
                 raise PromptConfigurationError(f"prompt asset is not UTF-8 for {role}") from exc
             if not content:
                 raise PromptConfigurationError(f"prompt asset is empty for {role}")
+            if _contains_legacy_verification_brackets(content):
+                raise PromptConfigurationError(
+                    f"prompt asset contains legacy verification brackets for {role}"
+                )
             loaded[role] = _PromptAsset(
                 role=role,
                 asset_id=str(spec.get("asset_id") or ""),
@@ -238,4 +270,14 @@ class IndividualSecurityPromptCompiler:
 
 def _known_or_unknown(value: str | None) -> str:
     normalized = (value or "").strip()
-    return normalized or "【U】未提供"
+    return _canonicalize_verification_brackets(normalized) or "【U】未提供"
+
+
+def _canonicalize_verification_brackets(value: str) -> str:
+    """Normalize legacy white lenticular brackets to the formal prompt notation."""
+
+    return value.translate(VERIFICATION_BRACKET_TRANSLATION)
+
+
+def _contains_legacy_verification_brackets(value: str) -> bool:
+    return any(bracket in value for bracket in LEGACY_VERIFICATION_BRACKETS)

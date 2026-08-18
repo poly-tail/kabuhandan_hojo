@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+import logging
 from typing import Protocol
 
 from sqlalchemy.orm import Session
@@ -18,8 +19,20 @@ from app.prompts.individual_security import (
     PromptTrace,
     SecurityPromptContext,
 )
-from app.schemas.ai_analysis import AiAnalysisRequest, AiSecuritySnapshot
-from app.services.ai_analysis_records import AiAnalysisRecordInput, AiAnalysisRecordRepository
+from app.schemas.ai_analysis import AiAnalysisPersistenceStatus, AiAnalysisRequest, AiSecuritySnapshot
+from app.services.ai_analysis_records import (
+    AiAnalysisPersistenceError,
+    AiAnalysisRecordInput,
+    AiAnalysisRecordRepository,
+)
+
+
+logger = logging.getLogger(__name__)
+
+PERSISTENCE_FAILURE_WARNING = (
+    "回答は生成されましたが、ローカルDBへ保存できませんでした。"
+    "大画面での再表示は利用できません。"
+)
 
 
 class OpenAITextClient(Protocol):
@@ -45,7 +58,9 @@ class AiAnalysisServiceResult:
     openai_response_id: str
     security: AiSecuritySnapshot
     prompt_trace: PromptTrace
-    saved_at: datetime
+    persistence_status: AiAnalysisPersistenceStatus
+    saved_at: datetime | None
+    persistence_warning: str | None
 
 
 class AiAnalysisService:
@@ -96,25 +111,43 @@ class AiAnalysisService:
             preset=preset,
             request_metadata=compiled_prompt.trace.as_openai_metadata(),
         )
-        record = self._record_repository.save(
-            db=db,
-            record_input=AiAnalysisRecordInput(
-                request_id=request_id,
-                security=snapshot,
-                question=payload.question,
-                answer_text=response.output_text,
-                preset=preset,
-                model=AI_ANALYSIS_MODEL,
-                openai_response_id=response.response_id,
-                prompt_trace=compiled_prompt.trace,
-            ),
-        )
+        try:
+            record = self._record_repository.save(
+                db=db,
+                record_input=AiAnalysisRecordInput(
+                    request_id=request_id,
+                    security=snapshot,
+                    question=payload.question,
+                    answer_text=response.output_text,
+                    preset=preset,
+                    model=AI_ANALYSIS_MODEL,
+                    openai_response_id=response.response_id,
+                    prompt_trace=compiled_prompt.trace,
+                ),
+            )
+        except AiAnalysisPersistenceError as exc:
+            logger.error(
+                "AI analysis persistence failed request_id=%s openai_response_id=%s exception_type=%s",
+                request_id,
+                response.response_id,
+                exc.exception_type,
+            )
+            persistence_status: AiAnalysisPersistenceStatus = "failed"
+            saved_at = None
+            persistence_warning = PERSISTENCE_FAILURE_WARNING
+        else:
+            persistence_status = "saved"
+            saved_at = record.created_at
+            persistence_warning = None
+
         return AiAnalysisServiceResult(
             answer_text=response.output_text,
             openai_response_id=response.response_id,
             security=snapshot,
             prompt_trace=compiled_prompt.trace,
-            saved_at=record.created_at,
+            persistence_status=persistence_status,
+            saved_at=saved_at,
+            persistence_warning=persistence_warning,
         )
 
 

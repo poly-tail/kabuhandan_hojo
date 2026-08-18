@@ -146,9 +146,71 @@ class PortfolioAiUsage(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     input_tokens: int | None = None
+    cached_input_tokens: int | None = None
     output_tokens: int | None = None
     reasoning_tokens: int | None = None
     web_search_calls: int = 0
+    api_calls: int = 0
+
+
+class PortfolioAiUsagePeriod(BaseModel):
+    """Locally aggregated usage for one calendar period in Asia/Tokyo."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    period: str
+    review_runs: int = 0
+    api_calls: int = 0
+    input_tokens: int = 0
+    cached_input_tokens: int = 0
+    output_tokens: int = 0
+    reasoning_tokens: int = 0
+    web_search_calls: int = 0
+    estimated_cost_usd: float = 0
+    unpriced_api_calls: int = 0
+
+
+class PortfolioAiPricingModel(BaseModel):
+    """Versioned standard-processing token prices in USD per one million tokens."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    input_usd_per_million: float
+    cached_input_usd_per_million: float
+    output_usd_per_million: float
+    long_context_threshold_tokens: int | None = None
+    long_context_input_multiplier: float | None = None
+    long_context_output_multiplier: float | None = None
+
+
+class PortfolioAiPricingInfo(BaseModel):
+    """Pricing provenance used for local cost estimates."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    version: str
+    as_of: str
+    currency: Literal["USD"] = "USD"
+    estimate_only: bool = True
+    web_search_usd_per_call: float
+    models: dict[str, PortfolioAiPricingModel]
+    source_urls: list[str]
+
+
+class PortfolioAiUsageSummary(BaseModel):
+    """Usage and cost summary for the legacy stock-review path only."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    scope: Literal["legacy_stock_review"] = "legacy_stock_review"
+    timezone: Literal["Asia/Tokyo"] = "Asia/Tokyo"
+    daily_limit: int
+    remaining_today: int
+    today: PortfolioAiUsagePeriod
+    month: PortfolioAiUsagePeriod
+    pricing: PortfolioAiPricingInfo
+    incomplete_pre_v2_history: bool = True
+    official_billing_is_authoritative: bool = True
 
 
 class LongTermCarryMonitoringIntervalView(BaseModel):

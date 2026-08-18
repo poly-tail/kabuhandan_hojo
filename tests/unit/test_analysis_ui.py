@@ -23,12 +23,17 @@ def test_minimal_analysis_ui_shell_is_served(monkeypatch) -> None:
     assert 'id="analysis-status"' in response.text
     assert 'id="analysis-error"' in response.text
     assert 'id="answer-text"' in response.text
+    assert 'id="analysis-persistence-warning"' in response.text
     assert 'id="analysis-saved-status"' in response.text
     assert 'id="open-saved-analysis"' in response.text
     assert 'target="_blank"' in response.text
     assert 'rel="noopener noreferrer"' in response.text
     assert "openSavedAnalysisLink.removeAttribute(\"href\")" in response.text
     assert "/ui/analysis/results/${encodeURIComponent(requestId)}" in response.text
+    assert 'payload.persistence_status === "saved" && requestId' in response.text
+    assert 'persistenceWarningElement.hidden = false' in response.text
+    assert "回答は生成されましたが、ローカルDBへ保存できませんでした。大画面での再表示は利用できません。" in response.text
+    assert 'savedStatusElement.hidden = false' in response.text
     assert "white-space: pre-wrap" in response.text
     assert "/securities/search?q=" in response.text
     assert 'fetch("/api/ai/analyses"' in response.text

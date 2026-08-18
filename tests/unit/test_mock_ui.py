@@ -160,3 +160,82 @@ def test_dashboard_ui_shells_are_served(monkeypatch: pytest.MonkeyPatch) -> None
     assert "const renderSearchCandidates = (screeningItems, watchlistItems) => {" in top_response.text
     assert "毎日の review queue" in review_response.text
     assert "/ui/dashboard/data" in review_response.text
+
+
+def test_dashboard_stock_ai_usage_ui_is_persistent_safe_and_refreshed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("APP_USE_MOCK", "true")
+
+    with TestClient(create_app()) as client:
+        response = client.get("/ui/dashboard")
+
+    assert response.status_code == 200
+    html = response.text
+    assert 'id="stock-ai-usage"' in html
+    assert 'id="stock-ai-usage-today"' in html
+    assert 'id="stock-ai-usage-month"' in html
+    assert 'id="stock-ai-usage-unpriced"' in html
+    assert 'id="stock-ai-usage-history-note"' in html
+    assert "本日 成功レビュー -- / --回・残り --・OpenAI呼出 --回・概算 $--" in html
+    assert "今月 成功レビュー --回・OpenAI呼出 --回・概算 $--" in html
+    assert "summary.today?.api_calls" in html
+    assert "summary.month?.api_calls" in html
+    assert "OpenAI呼出 ${todayApiCalls}回" in html
+    assert "OpenAI呼出 ${monthApiCalls}回" in html
+    assert "金額未算定のAPI呼び出し" in html
+    assert "旧形式のカウンターは新集計へ移行していません。更新前の回数・金額は含まれません。" in html
+    assert "1回＝正常完了した一括レビュー1件（銘柄数に関係なし）" in html
+    assert "旧stock-review経路だけが対象" in html
+    assert "正式な請求額ではありません" in html
+    assert "OpenAI PlatformのUsage Dashboardを正本" in html
+    assert 'fetchJson("/api/ai/stock-review/usage")' in html
+    assert "await Promise.all([loadDashboard(null), loadStockAiUsage()]);" in html
+    assert html.count("await loadStockAiUsage();") >= 2
+    assert "今回の事前概算" in html
+    assert "includeWebSearch ? 0.01 * webCalls : 0" in html
+    assert "includeWebSearch ? 0.008 * webCalls : 0" not in html
+    assert "data.actual_usage.web_search_calls}回上限" not in html
+    assert "data.actual_usage.web_search_calls}回" in html
+    assert 'database: "対象: 実DB保有銘柄"' in html
+    assert 'escapeHtml(data.holdings_source || "-")' not in html
+    assert 'fill("stock-ai-usage-' not in html
+    assert 'text("stock-ai-usage-today"' in html
+    assert 'text("stock-ai-usage-month"' in html
+
+
+def test_dashboard_search_can_prepare_a_holding_without_saving_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("APP_USE_MOCK", "true")
+
+    with TestClient(create_app()) as client:
+        response = client.get("/ui/dashboard")
+
+    assert response.status_code == 200
+    html = response.text
+    assert "銘柄名か銘柄コード（数字・英字）で検索" in html
+    assert 'placeholder="7203 / 285A / トヨタ / キオクシア"' in html
+    assert 'data-prepare-portfolio="${escapeAttr(item.ticker_code)}"' in html
+    assert ">保有入力へ</button>" in html
+    assert 'data-open-ticker="${escapeAttr(item.ticker_code)}"' in html
+    assert ">詳細を見る</button>" in html
+    assert "const preparePortfolioHolding = (tickerCode) => {" in html
+    assert 'placeholder="7203 / 285A"' in html
+    assert "const publicSecurityCode = (value) => {" in html
+    assert 'const isJquantsAlphanumericCode = /^[0-9A-Za-z]{4}0$/.test(normalized)' in html
+    assert "&& /[A-Za-z]/.test(normalized.slice(0, 4));" in html
+    assert "return isJquantsAlphanumericCode ? normalized.slice(0, 4) : normalized;" in html
+    assert html.count("escapeHtml(publicSecurityCode(item.ticker_code))") >= 2
+    assert "const publicTickerCode = publicSecurityCode(tickerCode);" in html
+    assert "tickerInput.value = publicTickerCode;" in html
+    assert "`${publicTickerCode} を選択しました。" in html
+    assert 'form.scrollIntoView({ behavior: "smooth", block: "center" });' in html
+    assert "quantityInput.focus({ preventScroll: true });" in html
+    assert "数量を入力して「保有を保存」を押してください。" in html
+    assert 'if (!tickerCode || !quantity) {' in html
+    assert 'setPortfolioFeedback("銘柄コードと数量は必須です。", "error");' in html
+
+    prepare_handler = html.index('event.target.closest("[data-prepare-portfolio]")')
+    detail_handler = html.index('event.target.closest("[data-select-ticker], [data-open-ticker]")')
+    assert prepare_handler < detail_handler

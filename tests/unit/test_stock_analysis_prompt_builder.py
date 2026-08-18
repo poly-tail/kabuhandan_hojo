@@ -3,6 +3,7 @@ from __future__ import annotations
 from app.prompts.stock_analysis import (
     build_prompt_only_text,
     build_stock_analysis_prompt,
+    estimate_openai_cost,
     get_base_policy_prompt,
     get_full_user_stock_analysis_prompt,
     get_mode_profile,
@@ -153,3 +154,10 @@ def test_scanner_schema_uses_simplified_non_monitoring_fields() -> None:
     assert "non_monitoring_hold_risk" in stock_schema["required"]
     assert "needs_long_term_carry_check" in stock_schema["required"]
     assert "long_term_carry_check" not in stock_schema["required"]
+
+
+def test_preflight_estimate_includes_configured_web_search_call_fee() -> None:
+    without_web = estimate_openai_cost("scanner", stock_count=5, include_web_search=False, max_web_search_calls=5)
+    with_web = estimate_openai_cost("scanner", stock_count=5, include_web_search=True, max_web_search_calls=5)
+
+    assert round(with_web - without_web, 4) == 0.05

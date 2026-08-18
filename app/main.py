@@ -23,7 +23,6 @@ def create_app() -> FastAPI:
     """Create the FastAPI application."""
 
     settings = get_settings()
-    init_db()
     app = FastAPI(
         title=settings.app_name,
         version=settings.app_version,

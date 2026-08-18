@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import csv
-from io import StringIO
+import re
 from decimal import Decimal
+from io import StringIO
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.models.portfolio import PortfolioHolding
@@ -41,13 +42,13 @@ class PortfolioService:
         return [self._to_schema(db, item) for item in items]
 
     def upsert_item(self, db: Session, payload: PortfolioHoldingUpsert) -> PortfolioHoldingRead:
-        profile = security_profile_service.resolve(payload.ticker_code, session=db)
-        security = db.get(SecurityMaster, payload.ticker_code)
+        ticker_code, security = self._resolve_ticker_code(db, payload.ticker_code)
+        profile = security_profile_service.resolve(ticker_code, session=db)
         if security is None:
             security = SecurityMaster(
-                ticker_code=payload.ticker_code,
-                local_code=profile.local_code if profile is not None else payload.ticker_code,
-                name=profile.name if profile is not None else payload.ticker_code,
+                ticker_code=ticker_code,
+                local_code=profile.local_code if profile is not None else ticker_code,
+                name=profile.name if profile is not None else ticker_code,
                 name_english=profile.name_english if profile is not None else None,
                 market=profile.market if profile is not None else None,
                 industry_17=profile.industry_17 if profile is not None else None,
@@ -60,7 +61,7 @@ class PortfolioService:
         else:
             if security.local_code is None and profile is not None:
                 security.local_code = profile.local_code
-            if security_profile_service.prefers_profile_name(security.name, payload.ticker_code, profile.name if profile else None):
+            if security_profile_service.prefers_profile_name(security.name, ticker_code, profile.name if profile else None):
                 security.name = profile.name
             if security.name_english is None and profile is not None:
                 security.name_english = profile.name_english
@@ -73,10 +74,10 @@ class PortfolioService:
             if security.listed_date is None and profile is not None:
                 security.listed_date = profile.listed_date
 
-        holding = db.scalar(select(PortfolioHolding).where(PortfolioHolding.ticker_code == payload.ticker_code))
+        holding = db.scalar(select(PortfolioHolding).where(PortfolioHolding.ticker_code == ticker_code))
         if holding is None:
             holding = PortfolioHolding(
-                ticker_code=payload.ticker_code,
+                ticker_code=ticker_code,
                 quantity=payload.quantity,
                 average_cost=payload.average_cost,
                 note=payload.note,
@@ -94,6 +95,39 @@ class PortfolioService:
         db.commit()
         db.refresh(holding)
         return self._to_schema(db, holding)
+
+    def _resolve_ticker_code(self, db: Session, ticker_code: str) -> tuple[str, SecurityMaster | None]:
+        """Resolve a public four-character code to an existing J-Quants raw code.
+
+        J-Quants represents securities such as Kioxia (public code ``285A``) as
+        ``285A0``.  Prefer an exact master key first.  Only when no exact key
+        exists do we consider the single, deterministic ``<code>0`` alias; an
+        ambiguous match is deliberately ignored instead of being guessed.
+        """
+
+        normalized = ticker_code.strip().upper()
+        security = db.get(SecurityMaster, normalized)
+        if security is not None:
+            return normalized, security
+
+        if re.fullmatch(r"[0-9A-Z]{4}", normalized) is None:
+            return normalized, None
+
+        raw_alias = f"{normalized}0"
+        candidates = db.scalars(
+            select(SecurityMaster).where(
+                or_(
+                    SecurityMaster.ticker_code == raw_alias,
+                    SecurityMaster.local_code == raw_alias,
+                )
+            )
+        ).all()
+        unique_candidates = {candidate.ticker_code: candidate for candidate in candidates}
+        if len(unique_candidates) != 1:
+            return normalized, None
+
+        resolved = next(iter(unique_candidates.values()))
+        return resolved.ticker_code, resolved
 
     def archive_item(self, db: Session, ticker_code: str) -> None:
         holding = db.scalar(select(PortfolioHolding).where(PortfolioHolding.ticker_code == ticker_code))

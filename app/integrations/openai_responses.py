@@ -223,6 +223,7 @@ class OpenAIResponsesClient:
             "input": input_text,
             "reasoning": reasoning,
             "text": {"verbosity": preset.text_verbosity},
+            "store": False,
             "timeout": self._timeout_seconds,
         }
         if request_metadata:

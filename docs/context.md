@@ -1,13 +1,32 @@
 # Context
 
+## 2026-08-18 銘柄検索・保有入力 addendum
+
+- dashboardの`GET /securities/search`利用箇所は、銘柄名、数字コード、英字を含むコードを案内し、検索結果ごとに`保有入力へ`と`詳細を見る`を分けます。
+- `保有入力へ`はPortfolio panelへcodeをprefillし、数量欄へfocusするだけです。数量入力と`保有を保存`の明示操作まではrecordを作りません。平均取得単価とメモは任意です。
+- J-Quants masterの英字5文字末尾`0`形式は、検索結果の表示と保有入力だけ公開4文字へ変換します。detail actionと検索API responseはraw master identifierを維持します。
+- `POST /portfolio`は完全一致を優先し、公開4文字codeに完全一致がない場合だけ、一意な`<code>0`の`ticker_code`/`local_code`を既存masterとして解決します。`285A`は既存`285A0`へ紐付き、公開codeのplaceholder重複を防ぎます。
+- master primary keyと既存参照recordのmigration、J-Quants connector全体のcode canonical化は行っていません。
+
+## 2026-08-17 legacy stock-review usage addendum
+
+- dashboardのlegacy stock-reviewだけに、既定300回/日のアプリ内quotaと、`GET /api/ai/stock-review/usage`によるJST本日・今月の利用量表示を追加しました。canonical `/api/ai/analyses`には適用しません。
+- quotaの`review_runs`は銘柄数ではなく、正常完了したtop-level一括review数です。5銘柄を一度にscanしても1回です。mock、cache hit、prompt-only、limit拒否は増えません。
+- providerの`api_calls`はreview数と別に記録します。primary response、JSON整形repair、後段parseに失敗したresponseを含み得るため、`api_calls`が`review_runs`より多い場合があります。
+- usage v2 ledgerは`data/ai_review_usage_v2.json`へJST日別bucketを保存します。旧`ai_review_usage.json`はtest汚染の可能性があるため移行せず、更新前の月間回数・概算額は含みません。
+- 概算額はprovider usageのinput / cached input / output tokenと実Web検索callを、2026-08-17時点のversioned standard pricingへ適用したUSD参考値です。算定不能callは`unpriced_api_calls`として残し、OpenAI PlatformのUsage Dashboardと請求情報を正本とします。
+- ledgerとusage APIはAPIキー、prompt、質問、回答、銘柄contextを持ちません。unit testはusage/history/cache pathを一時directoryへ隔離します。
+
 ## 2026-08-17 個別銘柄AI分析 addendum
 
 - 独立画面 `/ui/analysis` と canonical API `POST /api/ai/analyses` は、登録済み個別銘柄1件、自由質問、固定 `STANDARD`、OpenAI Responses API、プレーンテキスト回答だけを扱います。
 - この経路は dashboard の旧Portfolio AI分析とは独立しています。mock、cache、fallback、Web検索、Structured Outputs、JSON修復、streaming は使用せず、OpenAI失敗や空回答を成功へ変換しません。
 - 個別銘柄用promptは `app/prompts/individual_security/` のversioned assetsとmanifestを正本とし、共通OS、共通入力ルール、Web・外部市場データなし制約、用途module 3.1、銘柄context、自由質問をserver側で合成します。
-- source v2026.08.17の「銘柄名（銘柄コード）」併記規則を使い、銘柄名とコードを分離してcontextへ入れます。3.2〜3.14やJSON Schemaは組み込みません。
-- completedかつ非空の成功回答は `ai_analysis_record` へ自動保存し、同じ `request_id` で再取得できます。保存失敗はrollbackして成功扱いにしません。
-- `/ui/analysis/results/{request_id}` は保存済み回答を幅広い別ウィンドウで再表示します。質問と回答はローカルDBへ保存しますが、APIキー、prompt全文、provider raw response / errorは保存しません。
+- active prompt v2026.08.18では「銘柄名（銘柄コード）」規則を維持し、根拠labelを`【V】`、`【E】`、`【U】`へ統一します。v2026.08.17は履歴として不変で、3.2〜3.14やJSON Schemaは組み込みません。
+- completedかつ非空の成功回答は `ai_analysis_record` への保存を試みます。同じ `request_id` で再取得できるのは保存成功時だけです。保存失敗でも生成済み本文を返し、保存結果は`persistence_status`で分離します。
+- `/ui/analysis/results/{request_id}` は保存済み回答を幅広い別ウィンドウで再表示します。質問と回答は保存成功時だけローカルDBへ保存し、APIキー、prompt全文、provider raw response / errorは保存しません。
+- canonical Responses requestは`store=false`を明示します。これはOpenAIのResponses Application State保存を無効化する設定で、Zero Data Retention全体の保証ではありません。
+- API runnerは既定で`127.0.0.1`へbindします。認証、利用者分離、canonical rate limit、HTTPSがないため、`0.0.0.0`は信頼できる閉じたLANでだけ明示し、Internetへ直接公開しません。
 - AI送信中は銘柄検索・選択と質問編集をロックし、応答待ちの間に表示対象が変わらないようにします。canonical APIはvalidation errorを含む全responseを`no-store`にします。
 - 現在渡せる銘柄情報は主に `security_master` のcode、name、market、industry、listed dateです。価格、決算、テクニカル、需給、市場、マクロ、イベントは未提供として区別します。
 - 現行endpointにはアプリ独自の認証とrate limitがないため、trusted local環境向けです。Internetへ直接公開する前にhardeningが必要です。
@@ -55,6 +74,8 @@
   - alerts / event feed
   - watchlist 一覧
   - watchlist 未登録の高スコア候補
+  - legacy Portfolio AIの本日/今月の成功review、OpenAI呼出数、残数、概算額
+  - 銘柄名・数字/英字コード検索からPortfolio入力またはdetailへ進む導線
 - `/ui/security/{ticker_code}`
   - 個別銘柄 detail
   - 仮説メモ
@@ -94,6 +115,6 @@
 - prompt構成異常のtyped API error
 - 保存済みAI回答の認証・利用者分離・暗号化・保持期限・削除・一覧導線
 - review 画面の正本仕様はまだ別文書に切り出していない
-- portfolio 更新フローは watchlist 中心で、CSV import は未実装
-- TDnet は参照導線までで、自動 connector は未実装
+- portfolioはdashboardの銘柄検索結果から入力フォームへ進める。CSV importの画面導線は未実装
+- TDnet connectorと手動・detail時の同期経路は実装済みだが、有料の`TDNET_API_KEY`がない環境では参照リンクだけを利用する
 - 一部 analysis メモは設計意図の保持が主目的で、実装と 1 対 1 ではない

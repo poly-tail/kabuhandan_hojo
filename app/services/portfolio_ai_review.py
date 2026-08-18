@@ -39,6 +39,7 @@ from app.schemas.portfolio_ai import (
     PortfolioMarketSnapshot,
     ReasoningEffort,
 )
+from app.services.ai_usage import get_legacy_ai_usage_ledger
 from app.services.mock_watchlist import mock_watchlist_service
 from app.services.portfolio import portfolio_service
 from app.services.watchlist import WatchlistService
@@ -51,7 +52,6 @@ TOKYO_TIMEZONE = ZoneInfo("Asia/Tokyo")
 DATA_DIR = REPO_ROOT / "data"
 AI_REVIEW_HISTORY_PATH = DATA_DIR / "ai_review_history.json"
 AI_REVIEW_CACHE_PATH = DATA_DIR / "ai_review_cache.json"
-AI_REVIEW_USAGE_PATH = DATA_DIR / "ai_review_usage.json"
 
 JUDGEMENT_LABELS = {
     "hold": "保有継続",
@@ -658,7 +658,9 @@ class PortfolioAiReviewService:
             raw_output, usage = openai_result
         else:
             raw_output = openai_result
-            usage = PortfolioAiUsage(web_search_calls=max_web_search_calls if include_web_search else 0)
+            usage = PortfolioAiUsage(api_calls=1)
+        usage = self._with_minimum_api_calls(usage)
+        self._record_provider_usage(model=model, usage=usage)
 
         try:
             response = self.parse_ai_review_result(raw_output, options=options)
@@ -672,6 +674,8 @@ class PortfolioAiReviewService:
                         model=model,
                         output_schema=prompt_bundle["output_schema"],
                     )
+                    repair_usage = self._with_minimum_api_calls(repair_usage)
+                    self._record_provider_usage(model=model, usage=repair_usage)
                     usage = self._merge_usage(usage, repair_usage)
                     response = self.parse_ai_review_result(repaired_output, options=options)
                     warnings.extend(
@@ -1670,19 +1674,13 @@ class PortfolioAiReviewService:
         return estimate_openai_cost(mode, stock_count, include_web_search, max_web_search_calls)
 
     def _can_run_today(self, daily_limit: int) -> bool:
-        usage = self._read_json_object(AI_REVIEW_USAGE_PATH)
-        today = self._tokyo_now().date().isoformat()
-        if usage.get("date") != today:
-            return True
-        return int(usage.get("count") or 0) < daily_limit
+        return get_legacy_ai_usage_ledger().can_run_today(daily_limit)
 
     def _increment_daily_usage(self) -> None:
-        today = self._tokyo_now().date().isoformat()
-        usage = self._read_json_object(AI_REVIEW_USAGE_PATH)
-        if usage.get("date") != today:
-            usage = {"date": today, "count": 0}
-        usage["count"] = int(usage.get("count") or 0) + 1
-        self._write_json(AI_REVIEW_USAGE_PATH, usage)
+        get_legacy_ai_usage_ledger().record_review_success()
+
+    def _record_provider_usage(self, *, model: str, usage: PortfolioAiUsage) -> None:
+        get_legacy_ai_usage_ledger().record_provider_response(model=model, usage=usage)
 
     def _cache_key(self, request_payload: dict[str, Any]) -> str:
         raw = json.dumps(request_payload, ensure_ascii=False, sort_keys=True)
@@ -1747,25 +1745,41 @@ class PortfolioAiReviewService:
     ) -> PortfolioAiUsage:
         usage = getattr(response, "usage", None)
         input_tokens = getattr(usage, "input_tokens", None) if usage is not None else None
+        input_details = getattr(usage, "input_tokens_details", None) if usage is not None else None
+        cached_input_tokens = getattr(input_details, "cached_tokens", None) if input_details is not None else None
         output_tokens = getattr(usage, "output_tokens", None) if usage is not None else None
         reasoning_tokens = None
         output_details = getattr(usage, "output_tokens_details", None) if usage is not None else None
         if output_details is not None:
             reasoning_tokens = getattr(output_details, "reasoning_tokens", None)
+        output_items = getattr(response, "output", None)
+        web_search_calls = 0
+        if isinstance(output_items, list):
+            web_search_calls = sum(1 for item in output_items if getattr(item, "type", None) == "web_search_call")
         return PortfolioAiUsage(
             input_tokens=input_tokens,
+            cached_input_tokens=cached_input_tokens,
             output_tokens=output_tokens,
             reasoning_tokens=reasoning_tokens,
-            web_search_calls=max_web_search_calls if include_web_search else 0,
+            web_search_calls=web_search_calls,
+            api_calls=1,
         )
 
     def _merge_usage(self, primary: PortfolioAiUsage, secondary: PortfolioAiUsage) -> PortfolioAiUsage:
         return PortfolioAiUsage(
             input_tokens=self._sum_optional_int(primary.input_tokens, secondary.input_tokens),
+            cached_input_tokens=self._sum_optional_int(primary.cached_input_tokens, secondary.cached_input_tokens),
             output_tokens=self._sum_optional_int(primary.output_tokens, secondary.output_tokens),
             reasoning_tokens=self._sum_optional_int(primary.reasoning_tokens, secondary.reasoning_tokens),
             web_search_calls=primary.web_search_calls + secondary.web_search_calls,
+            api_calls=primary.api_calls + secondary.api_calls,
         )
+
+    @staticmethod
+    def _with_minimum_api_calls(usage: PortfolioAiUsage) -> PortfolioAiUsage:
+        if usage.api_calls >= 1:
+            return usage
+        return usage.model_copy(update={"api_calls": 1})
 
     def _sum_optional_int(self, left: int | None, right: int | None) -> int | None:
         if left is None and right is None:

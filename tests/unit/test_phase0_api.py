@@ -411,6 +411,102 @@ def test_portfolio_crud_and_dashboard_data(monkeypatch: pytest.MonkeyPatch) -> N
         assert client.get("/portfolio").json() == []
 
 
+def test_portfolio_public_alphanumeric_code_reuses_existing_jquants_master(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("APP_USE_MOCK", "false")
+    monkeypatch.setenv("DATABASE_URL", "sqlite://")
+    kioxia_name = "\u30ad\u30aa\u30af\u30b7\u30a2\u30db\u30fc\u30eb\u30c7\u30a3\u30f3\u30b0\u30b9"
+
+    with _build_live_client() as client:
+        master_response = client.post(
+            "/securities",
+            json={
+                "ticker_code": "285A0",
+                "name": kioxia_name,
+                "market": "TSE Prime",
+            },
+        )
+        assert master_response.status_code == 201
+
+        alias_response = client.post(
+            "/portfolio",
+            json={
+                "ticker_code": " 285a ",
+                "quantity": "100",
+                "average_cost": "2500",
+            },
+        )
+        assert alias_response.status_code == 201
+        alias_holding = alias_response.json()
+        assert alias_holding["ticker_code"] == "285A0"
+        assert alias_holding["name"] == kioxia_name
+
+        search_response = client.get("/securities/search", params={"q": kioxia_name})
+        assert search_response.status_code == 200
+        search_matches = search_response.json()
+        assert len(search_matches) == 1
+        assert search_matches[0]["ticker_code"] == "285A0"
+        assert search_matches[0]["name"] == kioxia_name
+
+        direct_response = client.post(
+            "/portfolio",
+            json={
+                "ticker_code": search_matches[0]["ticker_code"],
+                "quantity": "120",
+                "average_cost": "2450",
+            },
+        )
+        assert direct_response.status_code == 201
+        direct_holding = direct_response.json()
+        assert direct_holding["id"] == alias_holding["id"]
+        assert direct_holding["ticker_code"] == "285A0"
+
+        holdings = client.get("/portfolio").json()
+        assert len(holdings) == 1
+        assert holdings[0]["ticker_code"] == "285A0"
+        assert holdings[0]["quantity"] == "120.0000"
+        assert client.get("/securities/285A").status_code == 404
+
+
+def test_portfolio_csv_public_alphanumeric_code_reuses_existing_jquants_master(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("APP_USE_MOCK", "false")
+    monkeypatch.setenv("DATABASE_URL", "sqlite://")
+    kioxia_name = "\u30ad\u30aa\u30af\u30b7\u30a2\u30db\u30fc\u30eb\u30c7\u30a3\u30f3\u30b0\u30b9"
+
+    with _build_live_client() as client:
+        master_response = client.post(
+            "/securities",
+            json={
+                "ticker_code": "285A0",
+                "name": kioxia_name,
+                "market": "TSE Prime",
+            },
+        )
+        assert master_response.status_code == 201
+
+        import_response = client.post(
+            "/portfolio/import/csv",
+            json={
+                "csv_text": (
+                    "ticker_code,quantity,average_cost,note,sort_order\n"
+                    "285a,25,2600,memory,1\n"
+                ),
+                "replace_existing": False,
+            },
+        )
+        assert import_response.status_code == 200
+        assert import_response.json()["imported_count"] == 1
+
+        holdings = client.get("/portfolio").json()
+        assert len(holdings) == 1
+        assert holdings[0]["ticker_code"] == "285A0"
+        assert holdings[0]["name"] == kioxia_name
+        assert client.get("/securities/285A").status_code == 404
+
+
 def test_portfolio_csv_import(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("APP_USE_MOCK", "false")
     monkeypatch.setenv("DATABASE_URL", "sqlite://")

@@ -1,5 +1,36 @@
 # Changelog
 
+## 2026-08-18 security search to portfolio input
+
+- dashboardの検索案内を銘柄名・数字/英字コード対応へ改め、各結果へ`保有入力へ`と`詳細を見る`を追加した。
+- `保有入力へ`は公開codeをPortfolio panelへprefillし、数量欄へfocusするだけで自動保存しない。quantityを必須、average costとnoteを任意とする既存保存contractを維持した。
+- 英字5文字末尾`0`のJ-Quants raw identifierは、検索結果の表示とportfolio入力だけ公開4文字へ変換し、detail actionにはraw identifierを維持した。
+- `PortfolioService`へ完全一致優先かつ一意な`<4文字>0` alias解決を追加し、公開`285A`を既存キオクシアmaster`285A0`へ紐付けてplaceholder重複を防ぐようにした。既存5文字入力は維持した。
+- master primary key migrationとJ-Quants connector全体のcode canonical化は行っていない。
+- 既存TDnet connectorの設定案内と揃えるため、`.env.example`へ空の`TDNET_API_KEY`と既定`TDNET_BASE_URL`を追加した。
+- 要件 v1.6、API v1.9、画面 v2.1と`SC-2026-08-18-01`を追加し、旧版を変更せず現行baselineを更新した。
+
+## 2026-08-17 legacy stock-review usage / quota / cost estimate
+
+- legacy stock-reviewの`OPENAI_DAILY_REQUEST_LIMIT`既定値を50から300へ変更した。quotaは銘柄数ではなく正常完了したtop-level一括reviewの`review_runs`を使い、5銘柄一括scanも1回として扱う。
+- provider Responses APIの`api_calls`をreview quotaから分離し、primary response、JSON整形repair、後段parseに失敗したresponseのusageを記録するようにした。mock、cache hit、prompt-only、limit拒否はreview/API countを増やさない。
+- `app/services/ai_usage.py`とgit管理外`data/ai_review_usage_v2.json`を追加し、JST日別bucketから当日・当月のreview/API/token/実Web検索/概算額/未算定callを集計するようにした。atomic replace時の一時的なWindows `PermissionError`は短く再試行し、旧`ai_review_usage.json`はtest汚染の可能性があるため移行しない。
+- pricing catalog `openai-standard-2026-08-17`へgpt-5.4 / gpt-5.5 / gpt-5.6-terraのstandard token rate、long-context multiplier、実Web検索USD 0.01/call、公式sourceを記録した。reasoning tokenはoutput内訳として二重加算せず、unknown modelやusage不整合は`unpriced_api_calls`へ記録する。
+- `GET /api/ai/stock-review/usage`を追加し、scope、Asia/Tokyo、daily limit/remaining、today/month、pricing provenance、旧履歴不完全flagを`Cache-Control: no-store`で返すようにした。ledger/APIへprompt、質問、回答、APIキーを含めない。
+- dashboardのlegacy Portfolio AI panelへ、本日/今月の成功review、OpenAI呼出数、残数、token由来概算、未算定/旧履歴注記を追加した。事前heuristicは「今回の事前概算」と区別し、`database`等のholdings sourceを利用者向け日本語labelへ変換した。
+- unit testのusage/history/cacheを一時pathへ隔離し、repository local dataのcounter汚染を防止した。
+- 要件 v1.5、API v1.8、画面 v2.0と`SC-2026-08-17-04`を現行baselineへ追加した。canonical `/api/ai/analyses`のmodel、STANDARD preset、保存、prompt、error契約は変更していない。
+
+## 2026-08-17 canonical AI safety / persistence outcome / prompt v2026.08.18
+
+- canonical `OpenAIResponsesClient`のResponses requestへ`store=false`を固定し、`previous_response_id`やbackgroundを追加せず単発stateless requestにした。これはResponses Application State保存の無効化であり、Zero Data Retention全体を保証しないことをREADMEと仕様へ記録した。
+- OpenAI回答生成とローカルSQL保存の成否を分離し、成功responseへ`persistence_status`、`saved_at`、`persistence_warning`を追加した。commit失敗はrollbackするが、HTTP 200と生成済み本文を返し、OpenAIを再呼び出ししない。
+- `/ui/analysis`は保存失敗でも回答本文とwarningを表示し、保存済み表示と大画面reader linkは保存成功時だけ表示するようにした。保存詳細GETは保存済みrecordだけを返す既存契約を維持した。
+- runner、Settings、`.env.example`の既定bindを`127.0.0.1`へ変更し、Docker Composeのhost公開portもloopbackへ限定した。`--host 0.0.0.0`は信頼できる閉じたLANでの明示利用だけに残した。
+- DB初期化をFastAPI lifespanの1回へ一元化し、`create_app()`からDB副作用を除いた。
+- immutableなv2026.08.17 assetを残してactive bundle v2026.08.18を追加し、静的assetの旧括弧をfail closed、runtime値の旧括弧を正式な`【V】` / `【E】` / `【U】`へ正規化するcompiler v2へ更新した。
+- 要件 v1.4、API v1.7、画面 v1.9と`SC-2026-08-17-03`を追加し、client、API、UI、startup、promptの回帰testを更新した。legacy portfolio AI経路は変更していない。
+
 ## 2026-08-17 canonical AI response persistence / large reader
 
 - canonical `POST /api/ai/analyses` のcompletedかつ非空の成功回答だけを、新しいSQLAlchemy `ai_analysis_record`へ自動保存するようにした。既存のUUID `request_id`を保存IDとして再利用する。
