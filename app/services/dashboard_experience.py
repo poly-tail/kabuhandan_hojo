@@ -34,7 +34,7 @@ from app.schemas.ui_dashboard import (
     WarningItem,
     WatchlistOverviewItem,
 )
-from app.schemas.watchlist import WatchlistItem
+from app.schemas.watchlist import WatchlistCollectionRead, WatchlistItem
 from app.services.mock_monitoring import mock_monitoring_service
 from app.services.mock_watchlist import mock_watchlist_service
 from app.services.monitoring_runtime import get_monitoring_container, get_monitoring_settings
@@ -133,16 +133,23 @@ class DashboardExperienceService:
         *,
         session: Session | None,
         selected_ticker_code: str | None = None,
+        selected_watchlist_id: int | None = None,
         screening_limit: int = 6,
         event_limit: int = 8,
     ) -> DashboardExperienceResponse:
         if get_settings().app_use_mock:
-            return self._build_mock(selected_ticker_code=selected_ticker_code, screening_limit=screening_limit, event_limit=event_limit)
+            return self._build_mock(
+                selected_ticker_code=selected_ticker_code,
+                selected_watchlist_id=selected_watchlist_id,
+                screening_limit=screening_limit,
+                event_limit=event_limit,
+            )
         if session is None:
             raise RuntimeError("Database session is required when mock mode is disabled.")
         return self._build_live(
             session=session,
             selected_ticker_code=selected_ticker_code,
+            selected_watchlist_id=selected_watchlist_id,
             screening_limit=screening_limit,
             event_limit=event_limit,
         )
@@ -151,11 +158,21 @@ class DashboardExperienceService:
         self,
         *,
         selected_ticker_code: str | None,
+        selected_watchlist_id: int | None,
         screening_limit: int,
         event_limit: int,
     ) -> DashboardExperienceResponse:
         dashboard = mock_monitoring_service.get_dashboard()
-        watchlist_items = mock_watchlist_service.list_items()
+        watchlist_collections = mock_watchlist_service.list_collections()
+        active_watchlist_id = self._resolve_watchlist_collection_id(
+            watchlist_collections,
+            selected_watchlist_id,
+        )
+        watchlist_items = (
+            mock_watchlist_service.list_items(collection_id=active_watchlist_id)
+            if active_watchlist_id is not None
+            else []
+        )
         screening = mock_monitoring_service.get_screening_query(
             ScreeningFilterRequest(min_total_score=Decimal("60"), limit=screening_limit)
         )
@@ -177,6 +194,8 @@ class DashboardExperienceService:
             dashboard=dashboard,
             screening=screening,
             portfolio_items=portfolio_items,
+            watchlist_collections=watchlist_collections,
+            selected_watchlist_id=active_watchlist_id,
             watchlist_items=watchlist_items,
             bundles=bundles,
             sector_snapshots=sector_snapshots,
@@ -191,10 +210,20 @@ class DashboardExperienceService:
         *,
         session: Session,
         selected_ticker_code: str | None,
+        selected_watchlist_id: int | None,
         screening_limit: int,
         event_limit: int,
     ) -> DashboardExperienceResponse:
-        watchlist_items = self.watchlist_service.list_items(session)
+        watchlist_collections = self.watchlist_service.list_collections(session)
+        active_watchlist_id = self._resolve_watchlist_collection_id(
+            watchlist_collections,
+            selected_watchlist_id,
+        )
+        watchlist_items = (
+            self.watchlist_service.list_items(session, collection_id=active_watchlist_id)
+            if active_watchlist_id is not None
+            else []
+        )
         bundles: list[SecurityBundle] = []
         for item in watchlist_items:
             bundle = self._bundle_from_live(session=session, ticker_code=item.ticker_code, watchlist_item=item)
@@ -203,7 +232,11 @@ class DashboardExperienceService:
         sector_snapshots = self._load_sector_breadth_snapshots(session=session, bundles=bundles)
 
         market_signal = self._build_live_market_signal(session=session)
-        dashboard = self._build_live_dashboard(session, recent_event_limit=event_limit)
+        dashboard = self._build_live_dashboard(
+            session,
+            recent_event_limit=event_limit,
+            watchlist_items=watchlist_items,
+        )
         screening = self._build_live_screening(session, limit=screening_limit)
         if not screening and bundles:
             screening = [self._screening_from_bundle(bundle) for bundle in bundles[:screening_limit]]
@@ -222,6 +255,8 @@ class DashboardExperienceService:
             dashboard=dashboard,
             screening=screening,
             portfolio_items=portfolio_items,
+            watchlist_collections=watchlist_collections,
+            selected_watchlist_id=active_watchlist_id,
             watchlist_items=watchlist_items,
             bundles=bundles,
             sector_snapshots=sector_snapshots,
@@ -238,6 +273,8 @@ class DashboardExperienceService:
         dashboard: DashboardResponse,
         screening: list[ScreeningResult],
         portfolio_items: list[object],
+        watchlist_collections: list[WatchlistCollectionRead],
+        selected_watchlist_id: int | None,
         watchlist_items: list[WatchlistItem],
         bundles: list[SecurityBundle],
         sector_snapshots: dict[str, SectorBreadthSnapshot],
@@ -289,6 +326,8 @@ class DashboardExperienceService:
             important_alerts=important_alerts,
             event_feed=event_feed,
             portfolio_items=portfolio_items,
+            watchlist_collections=watchlist_collections,
+            selected_watchlist_id=selected_watchlist_id,
             watchlist_items=watchlist_overview,
             screening_items=screening_items,
             selected_ticker_code=selected_ticker,
@@ -414,10 +453,14 @@ class DashboardExperienceService:
             )
         return snapshots
 
-    def _build_live_dashboard(self, session: Session, recent_event_limit: int) -> DashboardResponse:
+    def _build_live_dashboard(
+        self,
+        session: Session,
+        recent_event_limit: int,
+        watchlist_items: list[WatchlistItem],
+    ) -> DashboardResponse:
         settings = get_monitoring_settings()
         container = get_monitoring_container()
-        watchlist_items = self.watchlist_service.list_items(session)
         rows: list[DashboardRow] = []
         aggregated_alerts: list[AlertRead] = []
         watchlist_tickers = [item.ticker_code for item in watchlist_items]
@@ -520,8 +563,6 @@ class DashboardExperienceService:
         detail = detail.model_copy(update={"security": security})
         alerts = self._live_alerts(session, ticker_code)
 
-        if watchlist_item is None:
-            watchlist_item = self._watchlist_like_from_detail(detail)
         detail = self._merge_with_watchlist(detail, watchlist_item)
         return SecurityBundle(
             security=security,
@@ -1003,22 +1044,6 @@ class DashboardExperienceService:
         if not update:
             return security
         return security.model_copy(update=update)
-
-    def _watchlist_like_from_detail(self, detail: SecurityDetailResponse) -> WatchlistItem:
-        now = detail.updated_at or datetime.now(timezone.utc)
-        return WatchlistItem(
-            id=0,
-            ticker_code=detail.security.ticker_code,
-            name=detail.security.name,
-            market=detail.security.market,
-            memo=None,
-            thesis_bull=None,
-            thesis_bear=None,
-            sort_order=999,
-            is_active=True,
-            created_at=now,
-            updated_at=now,
-        )
 
     def _live_alerts(self, session: Session, ticker_code: str) -> list[AlertRead]:
         latest_score_entity = self.security_service.latest_score(session, ticker_code)
@@ -2139,6 +2164,20 @@ class DashboardExperienceService:
         if bundle_map:
             return next(iter(bundle_map))
         return None
+
+    @staticmethod
+    def _resolve_watchlist_collection_id(
+        collections: list[WatchlistCollectionRead],
+        requested_id: int | None,
+    ) -> int | None:
+        """Resolve an active collection, falling back to the durable default."""
+
+        if requested_id is not None and any(item.id == requested_id for item in collections):
+            return requested_id
+        default = next((item for item in collections if item.is_default), None)
+        if default is not None:
+            return default.id
+        return collections[0].id if collections else None
 
     def _event_category(self, event_type: str) -> str:
         mapping = {

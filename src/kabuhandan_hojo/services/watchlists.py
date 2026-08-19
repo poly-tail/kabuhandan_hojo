@@ -1,18 +1,33 @@
-"""Watchlist management."""
+"""Watchlist collection management for monitoring services."""
 
 from __future__ import annotations
 
-from sqlalchemy import select
-from sqlalchemy.orm import Session
+import unicodedata
 
-from kabuhandan_hojo.models.entities import EventFact, ScoreDaily, SecurityMaster, Watchlist
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session, selectinload
+
+from kabuhandan_hojo.models.entities import (
+    EventFact,
+    ScoreDaily,
+    SecurityMaster,
+    Watchlist,
+    WatchlistCollection,
+    WatchlistMembership,
+)
 from kabuhandan_hojo.schemas.watchlists import WatchlistCreate
 
 
 class WatchlistService:
-    """Manage monitored tickers."""
+    """Manage monitored tickers, defaulting to the legacy-compatible list."""
 
-    def add(self, session: Session, payload: WatchlistCreate) -> Watchlist:
+    def add(
+        self,
+        session: Session,
+        payload: WatchlistCreate,
+        collection_id: int | None = None,
+    ) -> Watchlist:
+        collection = self._resolve_collection(session, collection_id)
         security = session.get(SecurityMaster, payload.ticker_code)
         if security is None:
             security = SecurityMaster(
@@ -37,28 +52,82 @@ class WatchlistService:
                 is_active=True,
             )
             session.add(watchlist)
+            session.flush()
         else:
-            watchlist.memo = payload.memo
-            watchlist.thesis_bull = payload.thesis_bull
-            watchlist.thesis_bear = payload.thesis_bear
-            watchlist.sort_order = payload.sort_order
+            if "memo" in payload.model_fields_set:
+                watchlist.memo = payload.memo
+            if "thesis_bull" in payload.model_fields_set:
+                watchlist.thesis_bull = payload.thesis_bull
+            if "thesis_bear" in payload.model_fields_set:
+                watchlist.thesis_bear = payload.thesis_bear
+            if collection.system_key == "default":
+                watchlist.sort_order = payload.sort_order
             watchlist.is_active = True
+
+        membership = session.scalar(
+            select(WatchlistMembership).where(
+                WatchlistMembership.collection_id == collection.id,
+                WatchlistMembership.watchlist_item_id == watchlist.id,
+            )
+        )
+        if membership is None:
+            membership = WatchlistMembership(
+                collection_id=collection.id,
+                watchlist_item_id=watchlist.id,
+                sort_order=payload.sort_order,
+                is_active=True,
+            )
+            session.add(membership)
+        else:
+            membership.sort_order = payload.sort_order
+            membership.is_active = True
         session.flush()
         return watchlist
 
-    def list(self, session: Session) -> list[Watchlist]:
+    def list(
+        self,
+        session: Session,
+        collection_id: int | None = None,
+    ) -> list[Watchlist]:
+        collection = self._resolve_collection(session, collection_id)
         statement = (
             select(Watchlist)
-            .where(Watchlist.is_active.is_(True))
-            .order_by(Watchlist.sort_order.asc(), Watchlist.id.asc())
+            .join(
+                WatchlistMembership,
+                WatchlistMembership.watchlist_item_id == Watchlist.id,
+            )
+            .options(selectinload(Watchlist.security))
+            .where(
+                WatchlistMembership.collection_id == collection.id,
+                WatchlistMembership.is_active.is_(True),
+                Watchlist.is_active.is_(True),
+            )
+            .order_by(WatchlistMembership.sort_order.asc(), Watchlist.id.asc())
         )
         return list(session.scalars(statement).all())
 
     def remove(self, session: Session, watchlist_id: int) -> None:
-        watchlist = session.get(Watchlist, watchlist_id)
-        if watchlist is None:
+        collection = self._resolve_collection(session, None)
+        membership = session.scalar(
+            select(WatchlistMembership).where(
+                WatchlistMembership.collection_id == collection.id,
+                WatchlistMembership.watchlist_item_id == watchlist_id,
+                WatchlistMembership.is_active.is_(True),
+            )
+        )
+        if membership is None:
             raise ValueError("Watchlist item was not found.")
-        watchlist.is_active = False
+        membership.is_active = False
+        session.flush()
+        active_count = session.scalar(
+            select(func.count(WatchlistMembership.id)).where(
+                WatchlistMembership.watchlist_item_id == watchlist_id,
+                WatchlistMembership.is_active.is_(True),
+            )
+        )
+        watchlist = session.get(Watchlist, watchlist_id)
+        if watchlist is not None:
+            watchlist.is_active = bool(active_count)
         session.flush()
 
     def latest_score(self, session: Session, ticker_code: str) -> ScoreDaily | None:
@@ -78,3 +147,29 @@ class WatchlistService:
             .limit(1)
         )
         return session.scalar(statement)
+
+    def _resolve_collection(
+        self,
+        session: Session,
+        collection_id: int | None,
+    ) -> WatchlistCollection:
+        if collection_id is None:
+            collection = session.scalar(
+                select(WatchlistCollection).where(WatchlistCollection.system_key == "default")
+            )
+            if collection is None:
+                name = "メイン"
+                collection = WatchlistCollection(
+                    name=name,
+                    normalized_name=unicodedata.normalize("NFKC", name).strip().casefold(),
+                    system_key="default",
+                    sort_order=0,
+                    is_active=True,
+                )
+                session.add(collection)
+                session.flush()
+            return collection
+        collection = session.get(WatchlistCollection, collection_id)
+        if collection is None or not collection.is_active:
+            raise ValueError("Watchlist was not found.")
+        return collection

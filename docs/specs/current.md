@@ -1,6 +1,6 @@
 # API Spec Current
 
-> 現在の正本: `api_spec_v2.2.md`
+> 現在の正本: `api_spec_v2.3.md`
 
 ## 概要
 
@@ -9,13 +9,21 @@
 
 ## 現在値
 
-- API仕様書: v2.2
+- API仕様書: v2.3
 - 更新日: 2026-08-19
-- 変更概要: legacy targetのlocal master canonical identity、dedupe/holdings優先、prompt名称併記、live/mock/cache共通のstock名・summary参照正規化を追加
+- 変更概要: 複数named watchlistのcollection / membership API、default互換、`watchlist_id`付き検索・dashboard・legacy AI targetとclient scope整合性を追加
 
 ## 主な変更点
 
 - `/ui/dashboard/data` を中心にした UI view model 契約
+- `watchlist_collection` / `watchlist_membership`、default「メイン」の初回migration、Portfolio別storage、security-level共有memo / thesis
+- `GET/POST /watchlists`、`PATCH/DELETE /watchlists/{id}`、collection item一覧・追加・解除とdefault削除409 / DELETE 204
+- legacy `GET/POST /watchlist`のdefault互換と、同tickerの複数list membership
+- optional `watchlist_id`付きsecurity検索 / dashboard data、collection別items / focus / alerts、detail / chart / detail保存scope
+- legacy stock-reviewのoptional `watchlist_id`、明示named empty / missing時の`no_holdings`・mock非fallback
+- checkboxの既存`selected` target自動切替、request開始時list名のclient snapshot、scope mutation時の旧AI result / response無効化
+- dashboard requested / active scope不一致responseの破棄と、Portfolio復帰時のdefault monitoring reload
+- named collectionがapp-globalで認証・利用者分離を持たないtrusted-local境界
 - 銘柄名、数字code、英字を含むcodeを検索し、raw master identifierを返す`GET /securities/search`
 - case-insensitive code検索、exact/local/prefix/name/market priorityと優先株等のprimary identifier保持
 - `POST /portfolio`の完全一致優先と、一意な`<4文字>0` aliasによる既存master解決

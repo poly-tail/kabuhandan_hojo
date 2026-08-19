@@ -7,6 +7,7 @@ from datetime import date, datetime
 from pydantic import BaseModel, Field
 
 from app.schemas.portfolio import PortfolioHoldingRead
+from app.schemas.watchlist import WatchlistCollectionRead
 from kabuhandan_hojo.schemas.securities import InterpretedMetricRead, PriceBarRead
 
 
@@ -205,6 +206,8 @@ class DashboardExperienceResponse(BaseModel):
     important_alerts: list[AlertCard] = Field(default_factory=list)
     event_feed: list[EventFeedItem] = Field(default_factory=list)
     portfolio_items: list[PortfolioHoldingRead] = Field(default_factory=list)
+    watchlist_collections: list[WatchlistCollectionRead] = Field(default_factory=list)
+    selected_watchlist_id: int | None = None
     watchlist_items: list[WatchlistOverviewItem] = Field(default_factory=list)
     screening_items: list[ScreeningOverviewItem] = Field(default_factory=list)
     selected_ticker_code: str | None = None

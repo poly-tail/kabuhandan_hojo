@@ -47,7 +47,7 @@ from app.schemas.portfolio_ai import (
 from app.services.ai_usage import get_legacy_ai_usage_ledger
 from app.services.mock_watchlist import mock_watchlist_service
 from app.services.portfolio import portfolio_service
-from app.services.watchlist import WatchlistService
+from app.services.watchlist import WatchlistCollectionNotFoundError, WatchlistService
 from kabuhandan_hojo.services.securities import SecurityService
 
 
@@ -319,8 +319,13 @@ class PortfolioAiReviewService:
             for item in portfolio_service.list_items(session)
         ]
 
-    def get_watchlist(self, session: Session | None) -> list[PortfolioAiHolding]:
-        """Return active watchlist entries as zero-quantity review targets."""
+    def get_watchlist(
+        self,
+        session: Session | None,
+        *,
+        watchlist_id: int | None = None,
+    ) -> list[PortfolioAiHolding]:
+        """Return one active watchlist collection as zero-quantity review targets."""
 
         if get_settings().app_use_mock:
             return [
@@ -331,7 +336,7 @@ class PortfolioAiReviewService:
                     quantity=0,
                     average_price=None,
                 )
-                for item in mock_watchlist_service.list_items()
+                for item in mock_watchlist_service.list_items(collection_id=watchlist_id)
             ]
         if session is None:
             return []
@@ -343,7 +348,7 @@ class PortfolioAiReviewService:
                 quantity=0,
                 average_price=None,
             )
-            for item in self.watchlist_service.list_items(session)
+            for item in self.watchlist_service.list_items(session, collection_id=watchlist_id)
         ]
 
     def get_mock_holdings(self) -> list[PortfolioAiHolding]:
@@ -478,6 +483,7 @@ class PortfolioAiReviewService:
             "mode": options.mode,
             "mode_label": MODE_LABELS[options.mode],
             "target": options.target,
+            "watchlist_id": options.watchlist_id,
             "analysis_mode": options.analysis_mode,
             "risk_preference": options.risk_preference,
             "verbosity": options.verbosity,
@@ -535,6 +541,7 @@ class PortfolioAiReviewService:
             "reasoning_effort": reasoning_effort,
             "mode_label": MODE_LABELS[options.mode],
             "judgement_labels": JUDGEMENT_LABELS,
+            "watchlist_id": options.watchlist_id,
             "include_web_search": include_web_search,
             "max_web_search_calls": max_web_search_calls,
         }
@@ -977,9 +984,14 @@ class PortfolioAiReviewService:
         if payload.use_mock_holdings or payload.target == "mock":
             return self._filter_tickers(self.get_mock_holdings(), payload.tickers), "mock"
         if payload.target == "watchlist":
-            watchlist = self.get_watchlist(session)
+            try:
+                watchlist = self.get_watchlist(session, watchlist_id=payload.watchlist_id)
+            except WatchlistCollectionNotFoundError:
+                return [], "watchlist"
             if watchlist:
                 return self._filter_tickers(watchlist, payload.tickers), "watchlist"
+            if payload.watchlist_id is not None:
+                return [], "watchlist"
             return self._filter_tickers(self.get_mock_holdings(), payload.tickers), "mock"
         if payload.target == "selected":
             selected = self._resolve_selected_tickers(payload.tickers, session=session)
@@ -2221,8 +2233,12 @@ def get_holdings(session: Session | None) -> list[PortfolioAiHolding]:
     return portfolio_ai_review_service.get_holdings(session)
 
 
-def get_watchlist(session: Session | None) -> list[PortfolioAiHolding]:
-    return portfolio_ai_review_service.get_watchlist(session)
+def get_watchlist(
+    session: Session | None,
+    *,
+    watchlist_id: int | None = None,
+) -> list[PortfolioAiHolding]:
+    return portfolio_ai_review_service.get_watchlist(session, watchlist_id=watchlist_id)
 
 
 def get_mock_holdings() -> list[PortfolioAiHolding]:

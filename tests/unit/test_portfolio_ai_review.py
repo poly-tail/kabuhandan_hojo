@@ -26,6 +26,7 @@ from app.services import ai_usage as ai_usage_module
 from app.services.monitoring_runtime import get_monitoring_container, get_monitoring_settings
 from app.services import portfolio_ai_review as portfolio_ai_review_module
 from app.services.portfolio_ai_review import AiReviewOutputError, portfolio_ai_review_service
+from app.services.watchlist import WatchlistCollectionNotFoundError
 from kabuhandan_hojo.models import Base as MonitoringBase
 
 
@@ -331,6 +332,91 @@ def test_selected_ticker_identity_is_hydrated_from_security_master(monkeypatch: 
     assert explicit_response.stocks[1].name == "キオクシアホールディングス"
     assert explicit_response.holdings_snapshot[2].ticker == "7203"
     assert explicit_response.holdings_snapshot[2].name == "トヨタ自動車"
+
+
+def test_named_watchlist_target_forwards_collection_id(monkeypatch: pytest.MonkeyPatch) -> None:
+    requested_ids: list[int | None] = []
+
+    def fake_get_watchlist(
+        session: Session | None,
+        *,
+        watchlist_id: int | None = None,
+    ) -> list[PortfolioAiHolding]:
+        requested_ids.append(watchlist_id)
+        return [
+            PortfolioAiHolding(
+                ticker="6501",
+                name="Hitachi",
+                market="Prime",
+                quantity=0,
+            )
+        ]
+
+    monkeypatch.setattr(portfolio_ai_review_service, "get_watchlist", fake_get_watchlist)
+    holdings, source = portfolio_ai_review_service._resolve_holdings(
+        PortfolioAiReviewRequest(
+            mode="scanner",
+            target="watchlist",
+            watchlist_id=7,
+            save_result=False,
+            use_cache=False,
+        ),
+        session=None,
+    )
+
+    assert requested_ids == [7]
+    assert source == "watchlist"
+    assert [item.ticker for item in holdings] == ["6501"]
+
+
+def test_empty_named_watchlist_never_falls_back_to_mock(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        portfolio_ai_review_service,
+        "get_watchlist",
+        lambda session, *, watchlist_id=None: [],
+    )
+
+    def fail_mock_fallback() -> list[PortfolioAiHolding]:
+        raise AssertionError("an explicitly selected empty watchlist must not use mock holdings")
+
+    monkeypatch.setattr(portfolio_ai_review_service, "get_mock_holdings", fail_mock_fallback)
+    holdings, source = portfolio_ai_review_service._resolve_holdings(
+        PortfolioAiReviewRequest(
+            mode="scanner",
+            target="watchlist",
+            watchlist_id=8,
+            save_result=False,
+            use_cache=False,
+        ),
+        session=None,
+    )
+
+    assert holdings == []
+    assert source == "watchlist"
+
+
+def test_missing_named_watchlist_is_an_empty_scoped_target(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fail_get_watchlist(
+        session: Session | None,
+        *,
+        watchlist_id: int | None = None,
+    ) -> list[PortfolioAiHolding]:
+        raise WatchlistCollectionNotFoundError("missing")
+
+    monkeypatch.setattr(portfolio_ai_review_service, "get_watchlist", fail_get_watchlist)
+    holdings, source = portfolio_ai_review_service._resolve_holdings(
+        PortfolioAiReviewRequest(
+            mode="scanner",
+            target="watchlist",
+            watchlist_id=404,
+            save_result=False,
+            use_cache=False,
+        ),
+        session=None,
+    )
+
+    assert holdings == []
+    assert source == "watchlist"
 
 
 def test_response_security_references_use_trusted_names_and_public_codes() -> None:

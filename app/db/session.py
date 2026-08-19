@@ -5,8 +5,9 @@ from __future__ import annotations
 from collections.abc import Generator
 from functools import lru_cache
 from pathlib import Path
+import unicodedata
 
-from sqlalchemy import create_engine, inspect
+from sqlalchemy import MetaData, Table, create_engine, inspect, select
 from sqlalchemy.engine import URL, make_url
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -216,6 +217,101 @@ def _apply_security_master_provenance_migration(engine) -> None:
             existing_run_columns.add(column_name)
 
 
+def _apply_watchlist_collections_migration(engine) -> None:
+    """Create the default collection and backfill legacy watchlist rows once."""
+
+    db_inspector = inspect(engine)
+    required_tables = {"watchlist", "watchlist_collection", "watchlist_membership"}
+    if not required_tables <= set(db_inspector.get_table_names()):
+        return
+
+    from app.models.watchlist import WatchlistCollection, WatchlistMembership
+
+    default_name = "メイン"
+    normalized_name = unicodedata.normalize("NFKC", default_name).strip().casefold()
+    reflected_metadata = MetaData()
+    legacy_table = Table("watchlist", reflected_metadata, autoload_with=engine)
+
+    with Session(engine) as session:
+        default_collection = session.scalar(
+            select(WatchlistCollection).where(WatchlistCollection.system_key == "default")
+        )
+        if default_collection is not None:
+            if not default_collection.is_active:
+                default_collection.is_active = True
+            session.commit()
+            return
+
+        if default_collection is None:
+            default_collection = session.scalar(
+                select(WatchlistCollection).where(
+                    WatchlistCollection.normalized_name == normalized_name
+                )
+            )
+        if default_collection is None:
+            default_collection = WatchlistCollection(
+                name=default_name,
+                normalized_name=normalized_name,
+                system_key="default",
+                sort_order=0,
+                is_active=True,
+            )
+            session.add(default_collection)
+        else:
+            default_collection.system_key = "default"
+            default_collection.is_active = True
+        session.flush()
+
+        selected_columns = [legacy_table.c.id, legacy_table.c.ticker_code]
+        if "sort_order" in legacy_table.c:
+            selected_columns.append(legacy_table.c.sort_order)
+        if "is_active" in legacy_table.c:
+            selected_columns.append(legacy_table.c.is_active)
+        if "updated_at" in legacy_table.c:
+            selected_columns.append(legacy_table.c.updated_at)
+
+        # Old databases may predate the intended ticker uniqueness. Choose the
+        # newest active row deterministically, while leaving every legacy row
+        # untouched for manual reconciliation.
+        preferred_by_ticker: dict[str, object] = {}
+        for row in session.execute(select(*selected_columns)).mappings():
+            ticker_code = str(row["ticker_code"])
+            score = (
+                bool(row.get("is_active", True)),
+                str(row.get("updated_at") or ""),
+                int(row["id"]),
+            )
+            existing = preferred_by_ticker.get(ticker_code)
+            if existing is None:
+                preferred_by_ticker[ticker_code] = (score, row)
+                continue
+            existing_score, _ = existing
+            if score > existing_score:
+                preferred_by_ticker[ticker_code] = (score, row)
+
+        existing_item_ids = set(
+            session.scalars(
+                select(WatchlistMembership.watchlist_item_id).where(
+                    WatchlistMembership.collection_id == default_collection.id
+                )
+            ).all()
+        )
+        for _, row in preferred_by_ticker.values():
+            item_id = int(row["id"])
+            if item_id in existing_item_ids:
+                continue
+            legacy_sort_order = row.get("sort_order", 100)
+            session.add(
+                WatchlistMembership(
+                    collection_id=default_collection.id,
+                    watchlist_item_id=item_id,
+                    sort_order=int(legacy_sort_order if legacy_sort_order is not None else 100),
+                    is_active=bool(row.get("is_active", True)),
+                )
+            )
+        session.commit()
+
+
 @lru_cache(maxsize=1)
 def get_engine():
     """Return the lazily initialized SQLAlchemy engine."""
@@ -257,6 +353,7 @@ def init_db() -> None:
     Base.metadata.create_all(bind=engine)
     _apply_security_master_provenance_migration(engine)
     _apply_sqlite_compat_migrations(engine)
+    _apply_watchlist_collections_migration(engine)
     _sync_local_security_master(engine)
 
 

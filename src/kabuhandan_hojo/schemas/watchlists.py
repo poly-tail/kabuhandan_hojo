@@ -32,10 +32,26 @@ class WatchlistRead(ORMModel):
     last_reviewed_at: datetime | None = None
 
 
+class WatchlistCollectionRead(ORMModel):
+    id: int
+    name: str
+    normalized_name: str
+    system_key: str | None = None
+    sort_order: int
+    is_active: bool
+
+
+class WatchlistMembershipRead(ORMModel):
+    id: int
+    collection_id: int
+    watchlist_item_id: int
+    sort_order: int
+    is_active: bool
+
+
 class WatchlistItemResponse(BaseModel):
     watchlist: WatchlistRead
     security: SecurityRead
     latest_score: ScoreRead | None = None
     latest_event_summary: str | None = None
     updated_at: datetime | None = None
-

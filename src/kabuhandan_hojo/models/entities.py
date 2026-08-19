@@ -6,7 +6,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import JSON, Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import JSON, Boolean, Date, DateTime, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from kabuhandan_hojo.models.base import Base, TimestampMixin
@@ -71,6 +71,49 @@ class Watchlist(TimestampMixin, Base):
     last_reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     security: Mapped["SecurityMaster"] = relationship(back_populates="watchlist_items")
+    memberships: Mapped[list["WatchlistMembership"]] = relationship(back_populates="watchlist_item")
+
+
+class WatchlistCollection(TimestampMixin, Base):
+    __tablename__ = "watchlist_collection"
+    __table_args__ = (
+        UniqueConstraint("normalized_name", name="uq_watchlist_collection_normalized_name"),
+        UniqueConstraint("system_key", name="uq_watchlist_collection_system_key"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(80), nullable=False)
+    normalized_name: Mapped[str] = mapped_column(String(256), nullable=False)
+    system_key: Mapped[str | None] = mapped_column(String(32))
+    sort_order: Mapped[int] = mapped_column(Integer, default=100, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    memberships: Mapped[list["WatchlistMembership"]] = relationship(back_populates="collection")
+
+
+class WatchlistMembership(TimestampMixin, Base):
+    __tablename__ = "watchlist_membership"
+    __table_args__ = (
+        UniqueConstraint(
+            "collection_id",
+            "watchlist_item_id",
+            name="uq_watchlist_membership_collection_item",
+        ),
+        Index(
+            "ix_watchlist_membership_item_active",
+            "watchlist_item_id",
+            "is_active",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    collection_id: Mapped[int] = mapped_column(ForeignKey("watchlist_collection.id"), nullable=False)
+    watchlist_item_id: Mapped[int] = mapped_column(ForeignKey("watchlist.id"), nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, default=100, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    collection: Mapped["WatchlistCollection"] = relationship(back_populates="memberships")
+    watchlist_item: Mapped["Watchlist"] = relationship(back_populates="memberships")
 
 
 class RawDocument(TimestampMixin, Base):

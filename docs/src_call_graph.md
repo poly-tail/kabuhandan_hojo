@@ -1,5 +1,42 @@
 # Source Call Graph
 
+## 2026-08-19 Portfolio・複数named watchlist
+
+### startupとdata
+
+1. FastAPI lifespan -> `init_db()` -> collection / membership table作成 -> default `system_key=default`を確認
+2. default不在 -> 同一transactionで「メイン」を作成 -> 既存`watchlist` itemをactive状態ごとdefault membershipへbackfill -> commit
+3. default存在 -> backfillをskip -> named-only itemをdefaultへ混入させない
+
+### collection・membership API
+
+1. browser -> `GET` / `POST /watchlists` -> `WatchlistService` -> collection一覧またはNFKC + trim / casefold identityで作成
+2. browser -> `PATCH` / `DELETE /watchlists/{id}` -> rename / reorderまたはnon-default削除 -> default削除は409、成功DELETEは204
+3. browser -> `GET` / `POST /watchlists/{id}/items` -> existing ticker-level `watchlist` itemをreuse / reactivate -> membershipをupsert -> 同tickerの他list membershipを維持
+4. browser -> `DELETE /watchlists/{id}/items/{ticker}` -> 指定membershipだけinactive -> Portfolioと他listを維持 -> 204
+5. legacy `GET` / `POST /watchlist` -> default collectionを解決 -> 同じitem service。memo / thesisはsecurity-level共有値
+
+### dashboard・検索・navigation
+
+1. `/ui/dashboard` queryなし -> Portfolio / `target=holdings`を既定表示。`?watchlist_id={id}`またはnamed選択 -> `target=watchlist` -> `GET /ui/dashboard/data?watchlist_id={id}` -> selected membership -> items / Focus Board / alerts
+2. invalid / missing / inactive dashboard ID -> defaultへfallback。`GET /securities/search?...&watchlist_id={id}`とcollection / item APIのmissing ID -> 404
+3. named list内検索 -> scoped `in_watchlist` -> `POST /watchlists/{id}/items`で追加 -> data再取得。card解除 -> scoped DELETE
+4. named list card -> `/ui/security/{ticker}?watchlist_id={id}` -> chart link / dashboard戻りも同じID -> detail追加 / 仮説保存もcollection item API
+5. Portfolio context -> queryなし -> default monitoring scopeをreload -> detailのwatchlist追加 / 仮説保存はlegacy default `/watchlist`
+6. dashboard fetch開始 -> request ID + requested collection scopeをsnapshot -> response時にactive scopeと照合 -> 不一致のstale responseを破棄
+
+### legacy AI
+
+1. management selectorがnamed list -> AI request `target=watchlist`, `watchlist_id={id}` -> `PortfolioAiReviewService`
+2. checkbox 1件以上 -> 既存`target=selected` + selected holdings。全解除かつmanual tickerなし -> `target=watchlist`
+3. AI開始 -> active list名をcontext snapshot -> loading / summary / Blob reader title。API / DB / Web Storageへ保存しない
+4. service -> 指定collectionのactive membershipだけをtarget化 -> non-emptyなら既存prompt / provider / parse / quota flow
+5. 明示named listがempty / missing / inactive -> `no_holdings` -> mock holdingsへfallbackしない。IDなしlegacy default emptyだけ既存fallbackを維持
+6. selector / collection / active membership / checkbox mutation -> client request generation更新 -> 現在結果と進行中旧responseを無効化。追加OpenAI callなし
+7. response -> 共通structured renderer / v2.6 Blob reader。selector切替自体はAPI / OpenAI再呼び出し、quota、usage mutationを行わない
+
+collectionはapp-globalで認証・利用者分離がない。Portfolio storage、canonical個別銘柄AI、active prompt v2026.08.18、J-Quants master flowは変更しない。
+
 ## 2026-08-19 legacy AI銘柄identity正規化
 
 1. dashboard -> `POST /api/ai/stock-review` -> `PortfolioAiReviewService.review()` -> holdings / candidates / selected targetを解決

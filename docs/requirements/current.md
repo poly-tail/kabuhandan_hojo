@@ -1,6 +1,6 @@
 # Requirements Current
 
-> 現在の正本: `requirements_v1.9.md`
+> 現在の正本: `requirements_v2.0.md`
 
 ## 概要
 
@@ -9,14 +9,23 @@
 
 ## 現在値
 
-- 要件仕様書: v1.9
+- 要件仕様書: v2.0
 - 更新日: 2026-08-19
-- 変更概要: legacy stock-reviewのlocal master銘柄identity補完、canonical ticker重複解消、promptの名称・code併記、live/mock/cache共通のstock名・summary銘柄参照正規化を追加
+- 変更概要: Portfolioと複数named watchlistの単一管理space、collection / membership、default一度限りmigration、検索・dashboard・detail / chart・legacy AIのcollection scopeを追加
 
 ## 主な内容
 
 - 日本株の判断補助アプリであること
 - 自動売買を目的にしないこと
+- Portfolioは独立storageのまま、default「メイン」を含む複数named watchlistをcollection / membershipで管理すること
+- 同じtickerを複数listへ登録でき、memo / thesisはsecurity-level共有、membershipの並び順とactive状態はlist別とすること
+- defaultを初回だけ作成・legacy backfillし、再起動でnamed-only itemをdefaultへ漏らさず、legacy `/watchlist`をdefault互換に保つこと
+- dashboardの単一管理spaceでPortfolio / named listを切り替え、collection CRUD、検索追加、membership解除、list別empty stateを提供すること
+- 検索、Focus Board、alerts、detail / chart往復、detail保存、legacy AIをactive `watchlist_id`へscopeすること
+- named list checkboxをcollection別に分離してselected targetへ自動切替し、全解除かつmanual tickerなしではlist全体へ戻すこと
+- request開始時list名をsummary / reader titleへclient snapshotし、scope mutation時は旧AI結果とstale responseを無効化すること
+- Portfolio復帰時にdefault monitoring scopeをreloadし、requested / active scopeが異なるdashboard responseを破棄すること
+- 明示named empty / missing AI targetをmock holdingsへfallbackせず、collectionをapp-global / 認証なしとしてtrusted localだけで扱うこと
 - dashboard検索結果の`保有入力へ`は公開codeのprefillと数量focusだけを行い、明示保存まではrecordを作らないこと
 - portfolio登録は完全一致を優先し、一意な`<4文字>0` raw master aliasへ解決してplaceholder重複を防ぐこと
 - raw codeはdetail/APIで維持し、公開code変換をdashboardの表示・入力境界に限定すること

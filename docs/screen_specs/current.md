@@ -1,6 +1,6 @@
 # Screen Spec Current
 
-> 現在の正本: `screen_spec_v2.6.md`
+> 現在の正本: `screen_spec_v2.7.md`
 
 ## 概要
 
@@ -9,13 +9,21 @@
 
 ## 現在値
 
-- 画面仕様書: v2.6
+- 画面仕様書: v2.7
 - 更新日: 2026-08-19
-- 変更概要: legacy Portfolio / Watchlistの現在回答を、安全なclient-only Blob snapshotとして別タブ・別ウィンドウへ大きく表示
+- 変更概要: Portfolioと複数named watchlistを単一管理spaceで切り替え、collection操作、scoped検索・monitoring・detail / chart・legacy AIを提供
 
 ## 主な変更点
 
 - UI 5画面構成と独立URL `GET /ui/analysis`
+- Portfolioを既定表示とする全幅「保有・ウォッチリスト管理」spaceと、`portfolio` / `watchlist:<id>` native selector
+- default「メイン」を含むnamed listのinline作成・名前変更・non-default削除、検索追加、membership解除、mockなしempty state
+- named list別のitems / Focus Board / alerts、検索、detail / chart query、戻りlink、detail追加 / 仮説保存scope
+- URL `?watchlist_id=`由来のnamed初期表示 / `target=watchlist`と、Portfolio復帰時のdefault monitoring reload
+- collection別checkbox、選択時の`selected` target自動切替、全解除かつmanual tickerなしでの`watchlist`復帰
+- AI request開始時list名をsummary / reader titleへsnapshotし、scope・collection・membership・checkbox mutationで旧結果を無効化すること
+- dashboard / AIのrequest IDとrequested scopeをactive scopeへ照合し、遅い旧responseを描画しないこと
+- memo / thesisのsecurity-level共有、app-global / 認証なし、loopback / trusted-localの表示境界
 - dashboardで銘柄名・数字/英字codeを検索し、結果からPortfolio入力またはdetailへ進む導線
 - 英字5文字末尾`0`は表示・保有入力だけ公開4文字とし、detail actionはraw identifierを維持
 - `東証全銘柄を同期`のrequired J-Quants実行と、同期中のbutton lock・safe error・再検索

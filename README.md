@@ -8,6 +8,18 @@
 - 銘柄別cardの名称と、portfolio summaryの買い・売り/縮小・保有優先・非監視縮小・core・入替候補をserver側で再照合します。live、mock、cache hitのすべてで「銘柄名（公開コード）」を使い、未知名称は`名称未登録（code）`と表示します。
 - たとえばlocal alias`285A0`はmasterのcanonical `285A`へ解決され、`キオクシアホールディングス（285A）`と表示されます。legacy stock cardも`publicSecurityCode()`を使います。API responseの型、canonical `POST /api/ai/analyses`、active prompt 2026.08.18、model / presetは変更していません。
 
+## 2026-08-19 Portfolio・複数ウォッチリスト管理
+
+- dashboardはPortfolioとWatchlistを別panelへ並べず、1つの全幅「保有・ウォッチリスト管理」spaceで切り替えます。既定表示はPortfolioです。default「メイン」を含む複数のnamed watchlistを作成・名前変更でき、default以外は削除できます。
+- Portfolioは独立storageのままです。watchlistはcollectionとmembershipで管理し、同じ銘柄を複数listへ登録できます。memo / thesisはlist別ではなくsecurity-level共有値で、同じtickerを含むlistへ更新が反映されます。
+- startup migrationはdefault「メイン」を初回だけ作成し、既存legacy watchlist itemを同じtransactionで一度だけbackfillします。`GET` / `POST /watchlist`はdefault互換として維持し、新規APIは`/watchlists`と`/watchlists/{collection_id}/items`を使います。
+- named list選択中は検索、Focus Board、alerts、詳細 / chartの往復、詳細画面の追加 / 仮説保存、legacy AI対象へ`watchlist_id`を維持します。Portfolio contextでは従来のdefault `/watchlist`を使います。
+- 明示したnamed listが空の場合、画面もAI分析もmock holdingsへfallbackしません。list切替だけでOpenAIを再呼び出さず、既存quota、usage、回答reader、canonical個別銘柄AIは変更しません。
+- named listのcheckboxを1件以上選ぶと共通AI対象は選択銘柄へ切り替わり、全解除かつmanual tickerなしではlist全体へ戻ります。実行時のlist名を結果summary / 別タブtitleへsnapshotし、後のrenameで別list名に見せません。
+- selector、collection、active membership、checkboxが変わると古いAI結果を消し、遅れて届いた旧scopeのdashboard / AI responseを表示しません。Portfolioへ戻る時はdefault monitoring scopeも再取得します。これらのclient制御でAPI、DB、Web Storage、OpenAI callを追加しません。
+- collectionは認証・利用者分離のないapp-global dataです。既定loopbackのtrusted local利用を前提とし、Internetへ直接公開しないでください。LAN / Android等へ広げる前に認証、HTTPS、利用者分離、rate limitが必要です。
+- 現在baselineは要件v2.0、API v2.3、画面v2.7、変更単位`SC-2026-08-19-05`です。
+
 ## 2026-08-19 軽量スキャンJSON契約修正
 
 - legacy `POST /api/ai/stock-review`の軽量スキャンで、valid JSONの`portfolio_summary.concentration_comment`と`summary_view`を、それぞれcanonicalな`concentration_risk`と`overall_view`へ追加OpenAI callなしで正規化します。
@@ -72,7 +84,7 @@
 
 ## 2026-08-19 仕様baseline更新
 
-- 現行正本を要件 v1.9、API v2.2、画面 v2.4へ更新し、legacy軽量スキャンのlocal master identity補完、canonical ticker重複解消、名称・code併記、live/mock/cache共通のsummary表示を反映しました。v1.8 / v2.1 / v2.3までの構造化response、J-Quants、検索・Portfolio、canonical AI、usage契約も累積継承します。
+- 当該変更時baselineを要件 v1.9、API v2.2、画面 v2.4へ更新し、legacy軽量スキャンのlocal master identity補完、canonical ticker重複解消、名称・code併記、live/mock/cache共通のsummary表示を反映しました。現在の正本は冒頭の最新baselineと各`current.md`を参照してください。
 - 仕様版の対応、変更理由、互換性、非対象、既知制約は `docs/spec_change_history.md` で追跡します。
 - 旧versioned文書とlegacy AI endpointは履歴・互換機能として保持しています。
 

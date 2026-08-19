@@ -1,12 +1,26 @@
 # Folder Structure
 
+## 2026-08-19 Portfolio・複数named watchlist addendum
+
+- `app/models/watchlist.py` / `src/kabuhandan_hojo/models/entities.py`: ticker-level item、collection、membership entity。memo / thesisはitem共有、sort / activeはmembership固有。
+- `app/db/session.py`: default「メイン」の初回作成と一度だけのlegacy membership backfill。
+- `app/schemas/watchlist.py` / `src/kabuhandan_hojo/schemas/watchlists.py`: collection read / create / updateと`collection_id`付きitem schema。
+- `app/services/watchlist.py` / `src/kabuhandan_hojo/services/watchlists.py`: collection CRUD、membership upsert / remove、default compatibility、list-scoped search。
+- `app/api/routes/watchlist.py`: `/watchlists` collection / item API、legacy `/watchlist` default endpoint、`/securities/search?watchlist_id=`。
+- `app/services/mock_watchlist.py`: mock modeのcollection / membership parity。
+- `app/schemas/ui_dashboard.py` / `app/services/dashboard_experience.py`: collection一覧、selected list、list-scoped dashboard view model。
+- `app/api/routes/ui.py`: 単一management space、selector、collection操作、検索追加、detail / chart queryとdetail保存scope、checkbox target同期、list名context snapshot、stale dashboard / AI response無効化、default monitoring reload。
+- `app/schemas/portfolio_ai.py` / `app/services/portfolio_ai_review.py`: optional `watchlist_id`とnamed empty時のmock非fallback。
+- `tests/unit/test_watchlist_collections.py` / `test_mock_ui.py` / `test_portfolio_ai_review.py`: data/API、migration、mock、UI、AI scopeの回帰test。
+- `docs/requirements/requirements_v2.0.md` / `docs/specs/api_spec_v2.3.md` / `docs/screen_specs/screen_spec_v2.7.md`: `SC-2026-08-19-05`の新しい累積baseline。旧versioned文書は不変で保持する。
+
 ## 2026-08-19 legacy AI銘柄identity addendum
 
 - `app/prompts/stock_analysis/builder.py` / `user_stock_analysis_prompt_full.py`: legacy AIのticker/name正本、名称・code併記、scanner portfolio影響section。
 - `app/services/portfolio_ai_review.py`: local master canonical identity補完、dedupe/holdings優先、live/mock/cache共通のstock名・summary参照正規化。
 - `app/api/routes/ui.py`: legacy stock cardの公開code表示。
 - `tests/unit/test_stock_analysis_prompt_builder.py` / `test_portfolio_ai_review.py` / `test_mock_ui.py`: prompt、service identity、UI表示の回帰test。
-- `docs/requirements/requirements_v1.9.md` / `docs/specs/api_spec_v2.2.md` / `docs/screen_specs/screen_spec_v2.4.md`: 2026-08-19の累積仕様baseline。旧versioned文書は不変で保持する。
+- `docs/requirements/requirements_v1.9.md` / `docs/specs/api_spec_v2.2.md` / `docs/screen_specs/screen_spec_v2.4.md`: `SC-2026-08-19-02`時点の累積仕様baselineとして不変で履歴保持する。
 
 ## 2026-08-19 legacy scanner validation addendum
 

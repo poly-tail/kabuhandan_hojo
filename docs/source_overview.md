@@ -1,5 +1,17 @@
 # Source Overview
 
+## 2026-08-19 Portfolio・複数named watchlist addendum
+
+- `app/models/watchlist.py`と`src/kabuhandan_hojo/models/entities.py`は既存ticker-level `watchlist`に加え、`watchlist_collection`と`watchlist_membership`を定義する。`app/models/__init__.py`と`src/kabuhandan_hojo/models/__init__.py`が新entityを公開する。
+- `app/db/session.py`はstartup migrationでdefault `system_key=default`の「メイン」を初回だけ作成し、そのtransaction内でlegacy itemをactive状態ごとmembershipへbackfillする。default存在後の再実行ではbackfillしない。
+- `app/schemas/watchlist.py`、`app/services/watchlist.py`、`app/api/routes/watchlist.py`はcollection CRUD、list別item membership、default互換`/watchlist`、`watchlist_id`付きsecurity検索を提供する。`src/kabuhandan_hojo/schemas/watchlists.py`と`src/kabuhandan_hojo/services/watchlists.py`は同じdata契約を保持する。
+- `app/services/mock_watchlist.py`はliveと同じcollection / membership外部契約をmock modeへ提供し、named emptyを仮銘柄で補完しない。
+- `app/schemas/ui_dashboard.py`と`app/services/dashboard_experience.py`は`watchlist_collections`、`selected_watchlist_id`、指定collectionのitems / Focus Board / alertsを組み立てる。invalid dashboard IDはdefaultへfallbackする。
+- `app/api/routes/ui.py`は全幅management space、selector、inline collection操作、検索追加、membership解除、collection別checkbox state、selected target自動切替、request開始時list名snapshot、旧scope result / async response無効化、Portfolio復帰時default monitoring reload、`watchlist_id`を保つdetail / chart遷移とdetail保存を描画する。
+- `app/schemas/portfolio_ai.py`と`app/services/portfolio_ai_review.py`はoptional `watchlist_id`を受け、明示named targetをそのmembershipだけへscopeする。空 / missing / inactiveでもmock holdingsへfallbackしない。
+- `tests/unit/test_watchlist_collections.py`、`tests/unit/test_mock_ui.py`、`tests/unit/test_portfolio_ai_review.py`はmigration、CRUD / search、mock parity、dashboard / navigation、named AI targetを固定する。
+- `docs/requirements/requirements_v2.0.md`、`docs/specs/api_spec_v2.3.md`、`docs/screen_specs/screen_spec_v2.7.md`、`docs/spec_change_history.md`が`SC-2026-08-19-05`の累積契約を保持する。
+
 ## 2026-08-19 legacy AI銘柄identity addendum
 
 - `app/prompts/stock_analysis/builder.py`はInput JSONのticker/name正本、「銘柄名（銘柄コード）」、`stocks[].ticker/name`転記、summary銘柄参照listの名称併記を生成契約へ追加する。scanner modeはsection 8「建玉・ポートフォリオ影響」とquick scan短縮版を含む。
@@ -40,7 +52,7 @@
 
 ## 2026-08-19 specification baseline addendum
 
-- `docs/requirements/requirements_v1.9.md`、`docs/specs/api_spec_v2.2.md`、`docs/screen_specs/screen_spec_v2.4.md`を現行仕様の正本とします。
+- `docs/requirements/requirements_v1.9.md`、`docs/specs/api_spec_v2.2.md`、`docs/screen_specs/screen_spec_v2.4.md`は`SC-2026-08-19-02`時点の正本として履歴保持します。現在の正本は先頭の複数named watchlist addendumと各`current.md`を参照します。
 - `SC-2026-08-19-02`がlegacy stock-reviewのlocal master identity、dedupe/holdings優先、名称・code併記、live/mock/cache/UI表示を追跡します。`SC-2026-08-19-01`以前と旧versioned文書は履歴として保持します。
 
 ## 2026-08-17 specification baseline addendum

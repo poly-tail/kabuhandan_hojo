@@ -18,11 +18,16 @@ router = APIRouter(tags=["ui"])
 @router.get("/ui/dashboard/data", include_in_schema=False, response_model=DashboardExperienceResponse)
 def dashboard_ui_data(
     ticker_code: str | None = Query(default=None, min_length=4, max_length=10),
+    watchlist_id: int | None = Query(default=None, ge=1),
     db: Session | None = Depends(get_db),
 ) -> DashboardExperienceResponse:
     """Return UI-focused dashboard data."""
 
-    return dashboard_experience_service.build(session=db, selected_ticker_code=ticker_code)
+    return dashboard_experience_service.build(
+        session=db,
+        selected_ticker_code=ticker_code,
+        selected_watchlist_id=watchlist_id,
+    )
 
 
 @router.get("/ui/dashboard", include_in_schema=False, response_class=HTMLResponse)
@@ -327,6 +332,56 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
       .watchlist-tools, .search-form, .form-grid {
         display: grid;
         gap: 12px;
+      }
+
+      .management-space-panel, .management-space-view, .management-list-form {
+        display: grid;
+        gap: 14px;
+        min-width: 0;
+      }
+
+      .management-space-controls {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        align-items: end;
+        justify-content: flex-end;
+        min-width: 0;
+        max-width: 100%;
+      }
+
+      .management-space-select-label {
+        display: grid;
+        gap: 6px;
+        min-width: min(340px, 100%);
+        max-width: 100%;
+      }
+
+      .management-space-header > *, #management-space-select {
+        min-width: 0;
+        max-width: 100%;
+      }
+
+      #management-space-select {
+        width: 100%;
+      }
+
+      .management-list-form {
+        grid-template-columns: minmax(220px, 420px) auto;
+        align-items: end;
+        padding: 14px;
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        background: rgba(255, 255, 255, 0.62);
+      }
+
+      .management-list-form label {
+        display: grid;
+        gap: 6px;
+      }
+
+      .management-list-form[hidden], .management-space-view[hidden] {
+        display: none;
       }
 
       .search-form, .detail-form {
@@ -834,7 +889,9 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
         .panel { padding: 20px; }
         .ai-review-card { padding: 16px; }
         .ai-result-section { padding: 12px; }
-        .kpi-grid, .status-grid, .metric-list, .search-row, .search-result, .inline-grid { grid-template-columns: 1fr; }
+        .kpi-grid, .status-grid, .metric-list, .search-row, .search-result, .inline-grid, .management-list-form { grid-template-columns: 1fr; }
+        .management-space-controls, .management-space-controls .section-actions { width: 100%; }
+        .management-space-select-label { width: 100%; min-width: 0; }
       }
     </style>
   </head>
@@ -899,24 +956,55 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
           <div class="card-grid" id="priority-grid" style="margin-top: 16px;"></div>
         </section>
 
-        <div class="list-grid">
-          <section class="panel">
-            <div class="section-head">
-              <div>
-                <div class="eyebrow">Portfolio</div>
-                <h2>保有銘柄</h2>
-              </div>
+        <section class="panel management-space-panel">
+          <div class="section-head management-space-header">
+            <div>
+              <div class="eyebrow">Management Space</div>
+              <h2>保有・ウォッチリスト管理</h2>
+            </div>
+            <div class="management-space-controls">
+              <label class="management-space-select-label" for="management-space-select">
+                <span class="subtle">表示するスペース</span>
+                <select class="input" id="management-space-select" aria-label="表示する保有・ウォッチリスト"></select>
+              </label>
               <div class="section-actions">
-                <button class="ghost-button" type="button" data-manual-update="portfolio-prices" data-manual-feedback="portfolio-feedback">評価価格更新</button>
+                <button class="ghost-button" id="watchlist-collection-create" type="button">新しいリスト</button>
+                <button class="ghost-button" id="watchlist-collection-rename" type="button" hidden>名前変更</button>
+                <button class="ghost-button" id="watchlist-collection-delete" type="button" hidden>リスト削除</button>
               </div>
             </div>
-            <div class="subtle" id="portfolio-note">broker 連携は使わず、手入力で保有銘柄を管理します。</div>
-            <div class="search-feedback" id="portfolio-feedback"></div>
+          </div>
+          <form class="management-list-form" id="watchlist-collection-form" hidden>
+            <label for="watchlist-collection-name">
+              <span class="subtle" id="watchlist-collection-form-label">リスト名</span>
+              <input class="input" id="watchlist-collection-name" maxlength="80" autocomplete="off" required />
+            </label>
+            <div class="section-actions">
+              <button class="primary-button" type="submit">保存</button>
+              <button class="ghost-button" id="watchlist-collection-cancel" type="button">キャンセル</button>
+            </div>
+          </form>
+          <div class="search-feedback" id="management-space-feedback" aria-live="polite"></div>
+
+          <div class="management-space-view">
+            <div id="portfolio-space-header">
+              <div class="section-head">
+                <div>
+                  <div class="eyebrow">Portfolio</div>
+                  <h3>保有銘柄</h3>
+                </div>
+                <div class="section-actions">
+                  <button class="ghost-button" type="button" data-manual-update="portfolio-prices" data-manual-feedback="portfolio-feedback">評価価格更新</button>
+                </div>
+              </div>
+              <div class="subtle" id="portfolio-note">broker 連携は使わず、手入力で保有銘柄を管理します。</div>
+              <div class="search-feedback" id="portfolio-feedback"></div>
+            </div>
             <div class="ai-review-tools">
               <div class="section-head" style="margin-bottom: 0;">
                 <div>
                   <div class="eyebrow">AI分析</div>
-                  <h3>今日の保有銘柄レビュー</h3>
+                  <h3>保有・ウォッチリストAIレビュー</h3>
                 </div>
                 <div class="score-chip" id="stock-ai-cost">--</div>
               </div>
@@ -988,21 +1076,23 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
               hidden
             >回答を別タブ／ウィンドウで大きく表示</a>
             <div class="ai-review-grid" id="portfolio-ai-review-results" aria-live="polite" aria-busy="false"></div>
-            <form class="search-row" id="portfolio-form" style="margin-top: 12px;">
-              <input class="search-input" id="portfolio-ticker-input" name="ticker_code" placeholder="7203 / 285A" aria-label="保有銘柄コード" />
-              <input class="search-input" id="portfolio-quantity-input" name="quantity" type="number" step="0.0001" min="0.0001" placeholder="100" aria-label="保有数量" />
-              <input class="search-input" id="portfolio-average-cost-input" name="average_cost" type="number" step="0.0001" min="0.0001" placeholder="3200" aria-label="平均取得単価" />
-              <input class="search-input" id="portfolio-note-input" name="note" placeholder="メモ" aria-label="保有メモ" />
-              <button class="primary-button" type="submit">保有を保存</button>
-            </form>
-            <div class="portfolio-grid" id="portfolio-list"></div>
-          </section>
+            <div id="portfolio-space-editor">
+              <form class="search-row" id="portfolio-form" style="margin-top: 12px;">
+                <input class="search-input" id="portfolio-ticker-input" name="ticker_code" placeholder="7203 / 285A" aria-label="保有銘柄コード" />
+                <input class="search-input" id="portfolio-quantity-input" name="quantity" type="number" step="0.0001" min="0.0001" placeholder="100" aria-label="保有数量" />
+                <input class="search-input" id="portfolio-average-cost-input" name="average_cost" type="number" step="0.0001" min="0.0001" placeholder="3200" aria-label="平均取得単価" />
+                <input class="search-input" id="portfolio-note-input" name="note" placeholder="メモ" aria-label="保有メモ" />
+                <button class="primary-button" type="submit">保有を保存</button>
+              </form>
+              <div class="portfolio-grid" id="portfolio-list"></div>
+            </div>
+          </div>
 
-          <section class="panel">
+          <div class="management-space-view" id="watchlist-space-view" hidden>
             <div class="section-head">
               <div>
                 <div class="eyebrow">Watchlist</div>
-                <h2>ウォッチリスト</h2>
+                <h3 id="active-watchlist-name">ウォッチリスト</h3>
               </div>
               <div class="section-actions">
                 <button class="ghost-button" type="button" data-manual-update="watchlist-scores" data-manual-feedback="watchlist-refresh-feedback">再評価</button>
@@ -1026,8 +1116,8 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
             >回答を別タブ／ウィンドウで大きく表示</a>
             <div class="ai-review-grid" id="watchlist-ai-review-results" aria-live="polite" aria-busy="false"></div>
             <div class="stack" id="watchlist-list"></div>
-          </section>
-        </div>
+          </div>
+        </section>
 
         <div class="list-grid">
           <section class="panel">
@@ -1138,6 +1228,11 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
       const INITIAL_TICKER = __INITIAL_TICKER__;
       const TOP_PAGE_URL = "/ui/dashboard";
       const TOKYO_TIME_ZONE = "Asia/Tokyo";
+      const INITIAL_WATCHLIST_ID = (() => {
+        const rawValue = new URLSearchParams(window.location.search).get("watchlist_id");
+        const parsed = Number(rawValue);
+        return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+      })();
 
       const state = {
         data: null,
@@ -1168,7 +1263,11 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
           error: null,
         },
         lastManualPrompt: "",
-        selectedWatchlistTickers: new Set(),
+        activeManagementSpace: INITIAL_WATCHLIST_ID === null ? "portfolio" : `watchlist:${INITIAL_WATCHLIST_ID}`,
+        watchlistSelections: new Map(),
+        collectionFormMode: null,
+        dashboardRequestId: 0,
+        stockAiRequestId: 0,
       };
 
       const AI_REVIEW_READER_CONFIG = Object.freeze({
@@ -1187,14 +1286,49 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
       });
       const aiReviewReaderObjectUrls = new Map();
 
-      const detailPageUrl = (tickerCode) => `/ui/security/${encodeURIComponent(tickerCode)}`;
-      const chartPageUrl = (tickerCode) => `/ui/security/${encodeURIComponent(tickerCode)}/chart`;
+      const managementSpaceQuery = () => {
+        const collectionId = activeWatchlistId();
+        return collectionId === null ? "" : `?watchlist_id=${encodeURIComponent(collectionId)}`;
+      };
+      const detailPageUrl = (tickerCode) => `/ui/security/${encodeURIComponent(tickerCode)}${managementSpaceQuery()}`;
+      const chartPageUrl = (tickerCode) => `/ui/security/${encodeURIComponent(tickerCode)}/chart${managementSpaceQuery()}`;
 
       const publicSecurityCode = (value) => {
         const normalized = String(value ?? "").trim();
         const isJquantsAlphanumericCode = /^[0-9A-Za-z]{4}0$/.test(normalized)
           && /[A-Za-z]/.test(normalized.slice(0, 4));
         return isJquantsAlphanumericCode ? normalized.slice(0, 4) : normalized;
+      };
+
+      const watchlistSpaceKey = (collectionId) => `watchlist:${collectionId}`;
+
+      const activeWatchlistId = () => {
+        const match = /^watchlist:(\d+)$/.exec(state.activeManagementSpace || "");
+        return match ? Number(match[1]) : null;
+      };
+
+      const activeWatchlistCollection = () => {
+        const collectionId = activeWatchlistId();
+        return (state.data?.watchlist_collections || []).find((item) => item.id === collectionId) || null;
+      };
+
+      const activeWatchlistSelection = () => {
+        const collectionId = activeWatchlistId();
+        if (collectionId === null) return new Set();
+        if (!state.watchlistSelections.has(collectionId)) {
+          state.watchlistSelections.set(collectionId, new Set());
+        }
+        return state.watchlistSelections.get(collectionId);
+      };
+
+      const pruneActiveWatchlistSelection = () => {
+        const collectionId = activeWatchlistId();
+        if (collectionId === null) return;
+        const selection = activeWatchlistSelection();
+        const currentTickers = new Set((state.data?.watchlist_items || []).map((item) => item.ticker_code));
+        Array.from(selection).forEach((ticker) => {
+          if (!currentTickers.has(ticker)) selection.delete(ticker);
+        });
       };
 
       const parseUiDate = (value) => {
@@ -1418,7 +1552,11 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
         const sourceElement = config ? document.getElementById(config.resultId) : null;
         if (!config || !link || !sourceElement?.children.length) return;
         try {
-          const readerHtml = buildAiReviewReaderHtml(config, sourceElement);
+          const readerConfig = {
+            ...config,
+            title: String(review?.readerTitle || config.title),
+          };
+          const readerHtml = buildAiReviewReaderHtml(readerConfig, sourceElement);
           const objectUrl = URL.createObjectURL(new Blob([readerHtml], { type: "text/html;charset=utf-8" }));
           aiReviewReaderObjectUrls.set(readerKey, objectUrl);
           link.href = objectUrl;
@@ -1452,12 +1590,20 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
           }
           throw new Error(`${url} -> ${response.status}${detail ? ` ${detail}` : ""}`);
         }
+        if (response.status === 204) return null;
         return response.json();
       };
 
       const postJson = (url, payload) =>
         fetchJson(url, {
           method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+
+      const patchJson = (url, payload) =>
+        fetchJson(url, {
+          method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
         });
@@ -1952,8 +2098,10 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
       };
 
       const selectedWatchlistItems = () => {
+        if (activeWatchlistId() === null) return [];
         const items = state.data?.watchlist_items || [];
-        return items.filter((item) => state.selectedWatchlistTickers.has(item.ticker_code));
+        const selection = activeWatchlistSelection();
+        return items.filter((item) => selection.has(item.ticker_code));
       };
 
       const selectedStockAiHoldings = () => {
@@ -2123,9 +2271,11 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
         const positionIntent = document.getElementById("stock-ai-position-intent")?.value || null;
         const holdings = target === "selected" ? selectedStockAiHoldings() : [];
         const tickers = target === "selected" ? holdings.map((item) => item.ticker) : parseTickerInput();
+        const watchlistId = target === "watchlist" ? activeWatchlistId() : null;
         return {
           mode,
           target,
+          watchlist_id: watchlistId,
           tickers,
           use_mock_holdings: target === "mock",
           holdings,
@@ -2139,6 +2289,34 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
           user_hypothesis: userHypothesis,
           position_intent: positionIntent,
         };
+      };
+
+      const stockAiReviewContext = (payload) => {
+        const target = payload?.target || "holdings";
+        if (target === "watchlist") {
+          const collections = state.data?.watchlist_collections || [];
+          const collection = payload.watchlist_id === null || payload.watchlist_id === undefined
+            ? collections.find((item) => item.is_default)
+            : collections.find((item) => item.id === payload.watchlist_id);
+          const label = collection?.name
+            ? `ウォッチリスト「${collection.name}」`
+            : "既定ウォッチリスト";
+          return { contextLabel: label, readerTitle: `${label} AI分析結果` };
+        }
+        if (target === "selected") {
+          const collection = selectedWatchlistItems().length ? activeWatchlistCollection() : null;
+          const label = collection?.name
+            ? `「${collection.name}」から選択した銘柄`
+            : "選択銘柄";
+          return { contextLabel: label, readerTitle: `${label} AI分析結果` };
+        }
+        const labels = {
+          holdings: "保有銘柄",
+          candidates: "狙い中銘柄",
+          mock: "テスト用仮銘柄",
+        };
+        const label = labels[target] || "対象銘柄";
+        return { contextLabel: label, readerTitle: `${label} AI分析結果` };
       };
 
       const isHighCostStockAiRequest = (payload) => (
@@ -2164,10 +2342,12 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
 
         if (review.status === "idle") {
           fill("portfolio-ai-review-results", "");
+          syncStockAiPrompt("");
           return;
         }
         if (review.status === "loading") {
-          fill("portfolio-ai-review-results", '<article class="ai-review-card">保有銘柄を分析中...</article>');
+          const targetLabel = review.contextLabel || "対象銘柄";
+          fill("portfolio-ai-review-results", `<article class="ai-review-card">${escapeHtml(targetLabel)}を分析中...</article>`);
           syncStockAiPrompt("");
           return;
         }
@@ -2190,6 +2370,7 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
               <div class="meta">
                 <h3 class="ai-card-title">${escapeHtml(aiReviewResultStatusLabel(data))}</h3>
                 <span class="chip warn">${escapeHtml(aiHoldingsSourceLabel(data.holdings_source))}</span>
+                ${review.contextLabel ? `<span class="chip">${escapeHtml(review.contextLabel)}</span>` : ""}
               </div>
               ${renderAiParagraph(data.error?.message || data.portfolio_summary?.overall_view || "分析できませんでした。")}
               ${rawOutput}
@@ -2203,7 +2384,7 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
         const stockCards = (data.stocks || []).map(renderAiStockCard).join("");
 
         fill("portfolio-ai-review-results", `
-          ${renderAiReviewSummary(data)}
+          ${renderAiReviewSummary(data, review.contextLabel || "")}
           ${stockCards}
         `);
         prepareAiReviewReader("portfolio", review);
@@ -2212,8 +2393,14 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
 
       const runPortfolioAiReview = async (modeOverride = null) => {
         const payloadBody = buildStockAiRequest(modeOverride);
+        const reviewContext = stockAiReviewContext(payloadBody);
         if (payloadBody.target === "selected" && !payloadBody.holdings.length && !payloadBody.tickers.length) {
-          state.portfolioAiReview = { status: "failed", data: null, error: "AI分析する選択銘柄を指定してください。" };
+          state.portfolioAiReview = {
+            status: "failed",
+            data: null,
+            error: "AI分析する選択銘柄を指定してください。",
+            ...reviewContext,
+          };
           renderPortfolioAiReview();
           return;
         }
@@ -2221,27 +2408,72 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
           const ok = window.confirm("高コスト設定です。対象銘柄数、Web検索、モードを確認して実行しますか。");
           if (!ok) return;
         }
-        state.portfolioAiReview = { status: "loading", data: null, error: null };
+        const requestId = ++state.stockAiRequestId;
+        state.portfolioAiReview = {
+          status: "loading",
+          data: null,
+          error: null,
+          ...reviewContext,
+        };
         setPortfolioAiButtonsDisabled(true);
         renderPortfolioAiReview();
         try {
           const payload = await postJson("/api/ai/stock-review", payloadBody);
+          if (requestId !== state.stockAiRequestId) return;
           state.portfolioAiReview = {
             status: payload.status || "success",
             data: payload,
             error: null,
+            ...reviewContext,
           };
         } catch (error) {
+          if (requestId !== state.stockAiRequestId) return;
           state.portfolioAiReview = {
             status: "failed",
             data: null,
             error: error.message || String(error),
+            ...reviewContext,
           };
         } finally {
-          setPortfolioAiButtonsDisabled(false);
-          renderPortfolioAiReview();
+          if (requestId === state.stockAiRequestId) {
+            setPortfolioAiButtonsDisabled(false);
+            renderPortfolioAiReview();
+          }
           await loadStockAiUsage();
         }
+      };
+
+      const invalidateStockAiReview = () => {
+        state.stockAiRequestId += 1;
+        state.portfolioAiReview = {
+          status: "idle",
+          data: null,
+          error: null,
+          contextLabel: null,
+          readerTitle: null,
+        };
+        setPortfolioAiButtonsDisabled(false);
+        renderPortfolioAiReview();
+      };
+
+      const syncWatchlistSelectionToAiTarget = () => {
+        const targetInput = document.getElementById("stock-ai-target");
+        if (!targetInput || activeWatchlistId() === null) return;
+        const hasSelectedWatchlistItems = selectedWatchlistItems().length > 0;
+        const hasManualTickers = parseTickerInput().length > 0;
+        if (hasSelectedWatchlistItems) {
+          targetInput.value = "selected";
+        } else if (targetInput.value === "selected" && !hasManualTickers) {
+          targetInput.value = "watchlist";
+        }
+        const feedback = document.getElementById("watchlist-ai-review-feedback");
+        if (feedback && state.watchlistAiReview.status === "idle") {
+          feedback.className = "search-feedback";
+          feedback.textContent = hasSelectedWatchlistItems
+            ? `${selectedWatchlistItems().length}銘柄を選択中です。共通AIパネルは「選択銘柄」を分析します。`
+            : "チェックすると共通AIパネルの対象が「選択銘柄」になります。";
+        }
+        updateStockAiCost();
       };
 
       const setupStockAiControls = () => {
@@ -2470,6 +2702,59 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
         `).join(""));
       };
 
+      const setManagementSpaceFeedback = (message = "", tone = "") => {
+        const feedback = document.getElementById("management-space-feedback");
+        if (!feedback) return;
+        feedback.className = tone ? `search-feedback ${tone}` : "search-feedback";
+        feedback.textContent = message;
+      };
+
+      const renderManagementSpace = (data) => {
+        const collections = data.watchlist_collections || [];
+        const knownIds = new Set(collections.map((item) => item.id));
+        const requestedId = activeWatchlistId();
+        if (requestedId !== null && !knownIds.has(requestedId)) {
+          state.activeManagementSpace = data.selected_watchlist_id
+            ? watchlistSpaceKey(data.selected_watchlist_id)
+            : "portfolio";
+        }
+
+        const selector = document.getElementById("management-space-select");
+        if (selector) {
+          selector.innerHTML = `
+            <option value="portfolio" ${state.activeManagementSpace === "portfolio" ? "selected" : ""}>保有銘柄 (${(data.portfolio_items || []).length})</option>
+            <optgroup label="ウォッチリスト">
+              ${collections.map((item) => `
+                <option
+                  value="${escapeAttr(watchlistSpaceKey(item.id))}"
+                  ${state.activeManagementSpace === watchlistSpaceKey(item.id) ? "selected" : ""}
+                >${escapeHtml(item.name)} (${item.item_count})${item.is_default ? " [既定]" : ""}</option>
+              `).join("")}
+            </optgroup>
+          `;
+          selector.value = state.activeManagementSpace;
+        }
+
+        const collection = activeWatchlistCollection();
+        const showingWatchlist = collection !== null;
+        const portfolioHeader = document.getElementById("portfolio-space-header");
+        const portfolioEditor = document.getElementById("portfolio-space-editor");
+        const watchlistView = document.getElementById("watchlist-space-view");
+        if (portfolioHeader) portfolioHeader.hidden = showingWatchlist;
+        if (portfolioEditor) portfolioEditor.hidden = showingWatchlist;
+        if (watchlistView) watchlistView.hidden = !showingWatchlist;
+        text("active-watchlist-name", collection ? `${collection.name}${collection.is_default ? "（既定）" : ""}` : "ウォッチリスト");
+
+        const renameButton = document.getElementById("watchlist-collection-rename");
+        const deleteButton = document.getElementById("watchlist-collection-delete");
+        if (renameButton) renameButton.hidden = !showingWatchlist;
+        if (deleteButton) {
+          deleteButton.hidden = !showingWatchlist;
+          deleteButton.disabled = Boolean(collection?.is_default);
+          deleteButton.title = collection?.is_default ? "既定のウォッチリストは削除できません。" : "";
+        }
+      };
+
       const renderPortfolio = (items) => {
         if (!items.length) {
           fill("portfolio-list", `
@@ -2544,9 +2829,10 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
 
       const renderWatchlist = (items) => {
         if (!items.length) {
-          fill("watchlist-list", `<div class="empty">watchlist が空です。</div>`);
+          fill("watchlist-list", `<div class="empty">このウォッチリストは空です。銘柄検索から追加できます。</div>`);
           return;
         }
+        const selection = activeWatchlistSelection();
         fill("watchlist-list", items.map((item) => `
           <article class="watch-item" data-select-ticker="${escapeAttr(item.ticker_code)}">
             <div class="meta">
@@ -2559,11 +2845,13 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
                   <input
                     type="checkbox"
                     data-watchlist-ai-select="${escapeAttr(item.ticker_code)}"
-                    ${state.selectedWatchlistTickers.has(item.ticker_code) ? "checked" : ""}
+                    aria-label="${escapeAttr(`${item.name}（${publicSecurityCode(item.ticker_code)}）をAI分析対象に選択`)}"
+                    ${selection.has(item.ticker_code) ? "checked" : ""}
                   />
                   AI分析
                 </label>
                 <span class="chip ${item.status === "要警戒" ? "warn" : ""}">${escapeHtml(item.status)}</span>
+                <button class="ghost-button" type="button" data-remove-watchlist="${escapeAttr(item.ticker_code)}">リストから外す</button>
               </div>
             </div>
             <div>${escapeHtml(item.next_action)}</div>
@@ -2599,12 +2887,14 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
           fill("watchlist-search-results", `<div class="empty">候補がありません。同期済みの銘柄マスタにある銘柄だけ表示します。</div>`);
           return;
         }
+        const collection = activeWatchlistCollection();
+        const activeTickers = new Set((state.data?.watchlist_items || []).map((item) => item.ticker_code));
         fill("watchlist-search-results", results.map((item) => `
           <article class="search-result" data-open-ticker="${escapeAttr(item.ticker_code)}">
             <div>
               <strong>${escapeHtml(item.name)}</strong>
               <div class="subtle">${escapeHtml(publicSecurityCode(item.ticker_code))} / ${escapeHtml(item.market ?? "-")}</div>
-              ${item.in_watchlist ? `<div class="subtle">watchlist 登録済み</div>` : ""}
+              ${collection && activeTickers.has(item.ticker_code) ? `<div class="subtle">「${escapeHtml(collection.name)}」に登録済み</div>` : ""}
             </div>
             <div class="action-row">
               <button
@@ -2612,6 +2902,14 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
                 type="button"
                 data-prepare-portfolio="${escapeAttr(item.ticker_code)}"
               >保有入力へ</button>
+              ${collection ? `
+                <button
+                  class="ghost-button"
+                  type="button"
+                  data-add-active-watchlist="${escapeAttr(item.ticker_code)}"
+                  ${activeTickers.has(item.ticker_code) ? "disabled" : ""}
+                >${activeTickers.has(item.ticker_code) ? "登録済み" : `「${escapeHtml(collection.name)}」へ追加`}</button>
+              ` : ""}
               <button
                 class="result-button"
                 type="button"
@@ -3534,12 +3832,15 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
       const renderTop = (data) => {
         renderHero(data);
         renderPriority(data.priority_items || []);
+        renderManagementSpace(data);
+        pruneActiveWatchlistSelection();
         renderPortfolio(data.portfolio_items || []);
         renderWatchlist(data.watchlist_items || []);
         renderAlerts(data.important_alerts || []);
         renderEvents(data.event_feed || []);
         renderScreening(data.screening_items || []);
         renderSearchCandidates(data.screening_items || [], data.watchlist_items || []);
+        renderSearchResults(state.searchResults || [], state.lastQuery || "");
         renderWatchlistAiReview();
       };
 
@@ -3585,15 +3886,27 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
         text("disclaimer", "UI データの取得に失敗しました。");
       };
 
-      const loadDashboard = async (tickerCode = null) => {
-        const query = tickerCode ? `?ticker_code=${encodeURIComponent(tickerCode)}` : "";
-        const data = await fetchJson(`/ui/dashboard/data${query}`);
+      const loadDashboard = async (tickerCode = null, watchlistId = activeWatchlistId()) => {
+        const requestId = ++state.dashboardRequestId;
+        const requestedWatchlistId = watchlistId === null || watchlistId === undefined
+          ? null
+          : Number(watchlistId);
+        const params = new URLSearchParams();
+        if (tickerCode) params.set("ticker_code", tickerCode);
+        if (watchlistId !== null && watchlistId !== undefined) params.set("watchlist_id", String(watchlistId));
+        const query = params.toString();
+        const data = await fetchJson(`/ui/dashboard/data${query ? `?${query}` : ""}`);
+        const activeScopeId = activeWatchlistId();
+        if (requestId !== state.dashboardRequestId) return false;
+        if (PAGE_MODE === "top" && requestedWatchlistId !== activeScopeId) return false;
         state.data = data;
         renderAll(data);
         renderPortfolioAiReview();
         renderWatchlistAiReview();
+        if (PAGE_MODE === "top") syncWatchlistSelectionToAiTarget();
         updateStockAiCost();
         restoreManualFeedback();
+        return true;
       };
 
       const runSecuritySearch = async (query) => {
@@ -3608,7 +3921,10 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
         }
 
         setSearchFeedback(`"${normalized}" を検索中...`);
-        const results = await fetchJson(`/securities/search?q=${encodeURIComponent(normalized)}`);
+        const searchParams = new URLSearchParams({ q: normalized });
+        const collectionId = activeWatchlistId();
+        if (collectionId !== null) searchParams.set("watchlist_id", String(collectionId));
+        const results = await fetchJson(`/securities/search?${searchParams.toString()}`);
         if (requestId !== state.searchRequestId) {
           return;
         }
@@ -3703,7 +4019,7 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
 
       const manualUpdateTargets = (kind) => {
         const tickerCode = selectedTickerCode();
-        const watchlistTickers = uniqueTickers(state.data?.watchlist_items || [], state.data?.priority_items || []);
+        const watchlistTickers = uniqueTickers(state.data?.watchlist_items || []);
         const screeningTickers = uniqueTickers(state.data?.screening_items || []);
         const portfolioTickers = uniqueTickers(state.data?.portfolio_items || []);
         const globalTasks = {
@@ -3721,7 +4037,7 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
         }
         if (kind === "watchlist-scores") {
           if (!watchlistTickers.length) {
-            throw new Error("watchlist 登録銘柄がないため、スコア更新対象がありません。");
+            throw new Error("選択中のウォッチリストに銘柄がないため、スコア更新対象がありません。");
           }
           return tickerTasks(
             watchlistTickers,
@@ -3924,6 +4240,153 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
         }
       };
 
+      const selectManagementSpace = async (spaceKey) => {
+        const nextSpace = spaceKey || "portfolio";
+        if (state.activeManagementSpace !== nextSpace) {
+          invalidateStockAiReview();
+        }
+        state.activeManagementSpace = nextSpace;
+        closeWatchlistCollectionForm();
+        const targetInput = document.getElementById("stock-ai-target");
+        const collectionId = activeWatchlistId();
+        if (targetInput) targetInput.value = collectionId === null ? "holdings" : "watchlist";
+        if (state.data) renderManagementSpace(state.data);
+        renderSearchResults(state.searchResults || [], state.lastQuery || "");
+        updateStockAiCost();
+        if (collectionId === null) {
+          renderPortfolio(state.data?.portfolio_items || []);
+        } else {
+          fill("watchlist-list", '<div class="empty">ウォッチリストを読み込み中...</div>');
+        }
+        setManagementSpaceFeedback(collectionId === null ? "保有銘柄へ切り替えています..." : "ウォッチリストを切り替えています...");
+        try {
+          const loaded = await loadDashboard(state.data?.selected_ticker_code || null, collectionId);
+          if (loaded && state.activeManagementSpace === nextSpace) setManagementSpaceFeedback("");
+        } catch (error) {
+          if (state.activeManagementSpace === nextSpace) {
+            setManagementSpaceFeedback(`表示スペースを読み込めませんでした: ${error.message || String(error)}`, "error");
+          }
+        }
+      };
+
+      const closeWatchlistCollectionForm = () => {
+        state.collectionFormMode = null;
+        const form = document.getElementById("watchlist-collection-form");
+        const input = document.getElementById("watchlist-collection-name");
+        if (form) form.hidden = true;
+        if (input) input.value = "";
+      };
+
+      const openWatchlistCollectionForm = (mode) => {
+        const collection = activeWatchlistCollection();
+        if (mode === "rename" && !collection) return;
+        state.collectionFormMode = mode;
+        const form = document.getElementById("watchlist-collection-form");
+        const input = document.getElementById("watchlist-collection-name");
+        if (!form || !input) return;
+        text("watchlist-collection-form-label", mode === "rename" ? "ウォッチリスト名を変更" : "新しいウォッチリスト名");
+        input.value = mode === "rename" ? collection.name : "";
+        form.hidden = false;
+        input.focus();
+        input.select();
+      };
+
+      const saveWatchlistCollection = async () => {
+        const input = document.getElementById("watchlist-collection-name");
+        const name = input?.value.trim() || "";
+        if (!name) {
+          setManagementSpaceFeedback("ウォッチリスト名を入力してください。", "error");
+          input?.focus();
+          return;
+        }
+
+        const mode = state.collectionFormMode;
+        const collection = activeWatchlistCollection();
+        const startingSpace = state.activeManagementSpace;
+        setManagementSpaceFeedback(mode === "rename" ? "名前を変更中..." : "ウォッチリストを作成中...");
+        try {
+          if (mode === "rename" && collection) {
+            await patchJson(`/watchlists/${collection.id}`, { name });
+            closeWatchlistCollectionForm();
+            await loadDashboard(state.data?.selected_ticker_code || null, activeWatchlistId());
+            setManagementSpaceFeedback(`「${name}」へ名前を変更しました。`, "success");
+            return;
+          }
+          const created = await postJson("/watchlists", { name });
+          if (state.activeManagementSpace === startingSpace) {
+            invalidateStockAiReview();
+            state.activeManagementSpace = watchlistSpaceKey(created.id);
+            const targetInput = document.getElementById("stock-ai-target");
+            if (targetInput) targetInput.value = "watchlist";
+          }
+          closeWatchlistCollectionForm();
+          await loadDashboard(state.data?.selected_ticker_code || null, activeWatchlistId());
+          setManagementSpaceFeedback(`「${created.name}」を作成しました。`, "success");
+        } catch (error) {
+          setManagementSpaceFeedback(`ウォッチリストを保存できませんでした: ${error.message || String(error)}`, "error");
+        }
+      };
+
+      const deleteActiveWatchlistCollection = async () => {
+        const collection = activeWatchlistCollection();
+        if (!collection || collection.is_default) return;
+        const confirmed = window.confirm(`「${collection.name}」を削除しますか。保有銘柄や他のウォッチリストには影響しません。`);
+        if (!confirmed) return;
+
+        setManagementSpaceFeedback(`「${collection.name}」を削除中...`);
+        try {
+          await deleteJson(`/watchlists/${collection.id}`);
+          state.watchlistSelections.delete(collection.id);
+          const fallback = (state.data?.watchlist_collections || []).find((item) => item.is_default && item.id !== collection.id);
+          if (activeWatchlistId() === collection.id) {
+            invalidateStockAiReview();
+            state.activeManagementSpace = fallback ? watchlistSpaceKey(fallback.id) : "portfolio";
+            const targetInput = document.getElementById("stock-ai-target");
+            if (targetInput) targetInput.value = fallback ? "watchlist" : "holdings";
+          }
+          closeWatchlistCollectionForm();
+          await loadDashboard(state.data?.selected_ticker_code || null, activeWatchlistId());
+          setManagementSpaceFeedback(`「${collection.name}」を削除しました。`, "success");
+        } catch (error) {
+          setManagementSpaceFeedback(`ウォッチリストを削除できませんでした: ${error.message || String(error)}`, "error");
+        }
+      };
+
+      const addSearchResultToActiveWatchlist = async (tickerCode) => {
+        const collection = activeWatchlistCollection();
+        const item = state.searchResults.find((candidate) => candidate.ticker_code === tickerCode);
+        if (!collection || !item) return;
+        setManagementSpaceFeedback(`「${collection.name}」へ ${publicSecurityCode(tickerCode)} を追加中...`);
+        try {
+          await postJson(`/watchlists/${collection.id}/items`, {
+            ticker_code: item.ticker_code,
+            name: item.name,
+            market: item.market,
+          });
+          if (activeWatchlistId() === collection.id) invalidateStockAiReview();
+          await loadDashboard(state.data?.selected_ticker_code || null, activeWatchlistId());
+          setManagementSpaceFeedback(`「${collection.name}」へ ${item.name} を追加しました。`, "success");
+        } catch (error) {
+          setManagementSpaceFeedback(`ウォッチリストへ追加できませんでした: ${error.message || String(error)}`, "error");
+        }
+      };
+
+      const removeActiveWatchlistItem = async (tickerCode) => {
+        const collection = activeWatchlistCollection();
+        if (!collection || !tickerCode) return;
+        setManagementSpaceFeedback(`「${collection.name}」から ${publicSecurityCode(tickerCode)} を外しています...`);
+        try {
+          await deleteJson(`/watchlists/${collection.id}/items/${encodeURIComponent(tickerCode)}`);
+          const selection = state.watchlistSelections.get(collection.id);
+          selection?.delete(tickerCode);
+          if (activeWatchlistId() === collection.id) invalidateStockAiReview();
+          await loadDashboard(state.data?.selected_ticker_code || null, activeWatchlistId());
+          setManagementSpaceFeedback(`「${collection.name}」から ${publicSecurityCode(tickerCode)} を外しました。`, "success");
+        } catch (error) {
+          setManagementSpaceFeedback(`ウォッチリストから外せませんでした: ${error.message || String(error)}`, "error");
+        }
+      };
+
       const addCurrentToWatchlist = async (button) => {
         const detail = state.data?.detail;
         const feedback = document.getElementById("detail-watchlist-feedback");
@@ -3934,7 +4397,9 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
           feedback.textContent = "watchlist に追加中...";
         }
         try {
-          await postJson("/watchlist", {
+          const collectionId = activeWatchlistId();
+          const endpoint = collectionId === null ? "/watchlist" : `/watchlists/${collectionId}/items`;
+          await postJson(endpoint, {
             ticker_code: detail.ticker_code,
             name: detail.name,
             market: detail.market,
@@ -3961,7 +4426,9 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
         feedback.className = "search-feedback";
         feedback.textContent = "保存中...";
         try {
-          await postJson("/watchlist", {
+          const collectionId = activeWatchlistId();
+          const endpoint = collectionId === null ? "/watchlist" : `/watchlists/${collectionId}/items`;
+          await postJson(endpoint, {
             ticker_code: detail.ticker_code,
             name: detail.name,
             market: detail.market,
@@ -4040,8 +4507,17 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
 
       const bootstrapTopPage = async () => {
         setupStockAiControls();
+        if (INITIAL_WATCHLIST_ID !== null) {
+          const targetInput = document.getElementById("stock-ai-target");
+          if (targetInput) targetInput.value = "watchlist";
+        }
         const form = document.getElementById("watchlist-search-form");
         const input = document.getElementById("watchlist-search-input");
+        const managementSpaceSelect = document.getElementById("management-space-select");
+
+        managementSpaceSelect?.addEventListener("change", async () => {
+          await selectManagementSpace(managementSpaceSelect.value);
+        });
 
         if (form && input) {
           form.addEventListener("submit", async (event) => {
@@ -4068,6 +4544,8 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
       };
 
       const bootstrapDetailPage = async () => {
+        const backLink = document.querySelector(".back-link");
+        if (backLink) backLink.href = `${TOP_PAGE_URL}${managementSpaceQuery()}`;
         await loadDashboard(INITIAL_TICKER);
       };
 
@@ -4078,17 +4556,60 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
             return;
           }
 
+          if (event.target.closest("#watchlist-collection-create")) {
+            event.preventDefault();
+            openWatchlistCollectionForm("create");
+            return;
+          }
+
+          if (event.target.closest("#watchlist-collection-rename")) {
+            event.preventDefault();
+            openWatchlistCollectionForm("rename");
+            return;
+          }
+
+          if (event.target.closest("#watchlist-collection-delete")) {
+            event.preventDefault();
+            await deleteActiveWatchlistCollection();
+            return;
+          }
+
+          if (event.target.closest("#watchlist-collection-cancel")) {
+            event.preventDefault();
+            closeWatchlistCollectionForm();
+            setManagementSpaceFeedback("");
+            return;
+          }
+
+          const addToActiveWatchlistButton = event.target.closest("[data-add-active-watchlist]");
+          if (addToActiveWatchlistButton) {
+            event.preventDefault();
+            event.stopPropagation();
+            await addSearchResultToActiveWatchlist(addToActiveWatchlistButton.dataset.addActiveWatchlist);
+            return;
+          }
+
+          const removeWatchlistButton = event.target.closest("[data-remove-watchlist]");
+          if (removeWatchlistButton) {
+            event.preventDefault();
+            event.stopPropagation();
+            await removeActiveWatchlistItem(removeWatchlistButton.dataset.removeWatchlist);
+            return;
+          }
+
           const watchlistSelectInput = event.target.closest("input[data-watchlist-ai-select]");
           if (watchlistSelectInput) {
             event.stopPropagation();
             const ticker = watchlistSelectInput.dataset.watchlistAiSelect;
             if (ticker) {
+              const selection = activeWatchlistSelection();
               if (watchlistSelectInput.checked) {
-                state.selectedWatchlistTickers.add(ticker);
+                selection.add(ticker);
               } else {
-                state.selectedWatchlistTickers.delete(ticker);
+                selection.delete(ticker);
               }
-              updateStockAiCost();
+              invalidateStockAiReview();
+              syncWatchlistSelectionToAiTarget();
             }
             return;
           }
@@ -4101,18 +4622,21 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
           const watchlistSelectAllButton = event.target.closest("[data-watchlist-ai-select-all]");
           if (watchlistSelectAllButton) {
             event.preventDefault();
-            (state.data?.watchlist_items || []).forEach((item) => state.selectedWatchlistTickers.add(item.ticker_code));
+            const selection = activeWatchlistSelection();
+            (state.data?.watchlist_items || []).forEach((item) => selection.add(item.ticker_code));
             renderWatchlist(state.data?.watchlist_items || []);
-            updateStockAiCost();
+            invalidateStockAiReview();
+            syncWatchlistSelectionToAiTarget();
             return;
           }
 
           const watchlistClearButton = event.target.closest("[data-watchlist-ai-clear]");
           if (watchlistClearButton) {
             event.preventDefault();
-            state.selectedWatchlistTickers.clear();
+            activeWatchlistSelection().clear();
             renderWatchlist(state.data?.watchlist_items || []);
-            updateStockAiCost();
+            invalidateStockAiReview();
+            syncWatchlistSelectionToAiTarget();
             return;
           }
 
@@ -4204,6 +4728,11 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
         });
 
         main.addEventListener("submit", async (event) => {
+          if (event.target.id === "watchlist-collection-form") {
+            event.preventDefault();
+            await saveWatchlistCollection();
+            return;
+          }
           if (event.target.id === "detail-hypothesis-form") {
             event.preventDefault();
             await saveHypothesisCard();

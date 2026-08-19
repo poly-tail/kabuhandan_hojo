@@ -49,6 +49,14 @@ def test_mock_dashboard_screening_and_ui_data_are_available(monkeypatch: pytest.
         assert ui_payload["market_overview"]["label"]
         assert ui_payload["priority_items"]
         assert ui_payload["screening_items"]
+        assert ui_payload["watchlist_collections"]
+        assert ui_payload["watchlist_collections"][0]["name"] == "メイン"
+        assert ui_payload["watchlist_collections"][0]["is_default"] is True
+        assert ui_payload["selected_watchlist_id"] == ui_payload["watchlist_collections"][0]["id"]
+        assert all(
+            item["collection_id"] == ui_payload["selected_watchlist_id"]
+            for item in client.get("/watchlist").json()
+        )
         assert ui_payload["selected_ticker_code"] == "7203"
         assert ui_payload["detail"]["ticker_code"] == "7203"
         assert ui_payload["detail"]["reference_links"]
@@ -89,7 +97,7 @@ def test_dashboard_ui_shells_are_served(monkeypatch: pytest.MonkeyPatch) -> None
     assert "/ui/dashboard/data" in top_response.text
     assert "/ui/security/" in top_response.text
     assert "/dashboard" in top_response.text
-    assert "/securities/search?q=" in top_response.text
+    assert "/securities/search?${searchParams.toString()}" in top_response.text
     assert "security-master-sync-button" in top_response.text
     assert "東証全銘柄を同期" in top_response.text
     assert 'id="security-master-status"' in top_response.text
@@ -102,7 +110,7 @@ def test_dashboard_ui_shells_are_served(monkeypatch: pytest.MonkeyPatch) -> None
     assert "market-proxy-sync-button" in top_response.text
     assert 'data-manual-update="watchlist-scores"' in top_response.text
     assert 'data-manual-update="portfolio-prices"' in top_response.text
-    assert "今日の保有銘柄レビュー" in top_response.text
+    assert "保有・ウォッチリストAIレビュー" in top_response.text
     assert "軽量スキャン" in top_response.text
     assert "個別詳細分析" in top_response.text
     assert "全体売買判断" in top_response.text
@@ -217,6 +225,114 @@ def test_dashboard_stock_ai_usage_ui_is_persistent_safe_and_refreshed(
     assert 'text("stock-ai-usage-month"' in html
 
 
+def test_dashboard_unifies_portfolio_and_named_watchlists_in_one_management_space(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("APP_USE_MOCK", "true")
+
+    with TestClient(create_app()) as client:
+        response = client.get("/ui/dashboard")
+
+    assert response.status_code == 200
+    html = response.text
+    assert html.count('class="panel management-space-panel"') == 1
+    assert 'id="management-space-select"' in html
+    assert '.management-space-header > *, #management-space-select {' in html
+    assert '#management-space-select {\n        width: 100%;' in html
+    assert '.management-space-select-label { width: 100%; min-width: 0; }' in html
+    assert 'value="portfolio"' in html
+    assert 'value="${escapeAttr(watchlistSpaceKey(item.id))}"' in html
+    assert 'id="portfolio-space-header"' in html
+    assert 'id="portfolio-space-editor"' in html
+    assert 'id="watchlist-space-view" hidden' in html
+    assert 'id="active-watchlist-name"' in html
+    assert 'id="watchlist-collection-create"' in html
+    assert 'id="watchlist-collection-rename"' in html
+    assert 'id="watchlist-collection-delete"' in html
+    assert 'id="watchlist-collection-form" hidden' in html
+    assert 'id="management-space-feedback" aria-live="polite"' in html
+    assert 'deleteButton.disabled = Boolean(collection?.is_default);' in html
+    assert "既定のウォッチリストは削除できません。" in html
+
+    assert 'postJson("/watchlists", { name })' in html
+    assert 'patchJson(`/watchlists/${collection.id}`, { name })' in html
+    assert 'deleteJson(`/watchlists/${collection.id}`)' in html
+    assert 'postJson(`/watchlists/${collection.id}/items`' in html
+    assert 'deleteJson(`/watchlists/${collection.id}/items/${encodeURIComponent(tickerCode)}`)' in html
+    assert 'data-add-active-watchlist="${escapeAttr(item.ticker_code)}"' in html
+    assert 'data-remove-watchlist="${escapeAttr(item.ticker_code)}"' in html
+    assert "if (response.status === 204) return null;" in html
+
+    assert 'activeManagementSpace: INITIAL_WATCHLIST_ID === null ? "portfolio" : `watchlist:${INITIAL_WATCHLIST_ID}`' in html
+    assert "watchlistSelections: new Map()" in html
+    assert "stockAiRequestId: 0" in html
+    assert "selectedWatchlistTickers" not in html
+    assert "const activeWatchlistSelection = () => {" in html
+    assert "const pruneActiveWatchlistSelection = () => {" in html
+    assert 'params.set("watchlist_id", String(watchlistId))' in html
+    assert 'searchParams.set("watchlist_id", String(collectionId))' in html
+    assert 'watchlist_id: watchlistId' in html
+    assert 'const watchlistId = target === "watchlist" ? activeWatchlistId() : null;' in html
+    assert "activeWatchlistId() ?? state.data?.selected_watchlist_id" not in html
+    assert 'new URLSearchParams(window.location.search).get("watchlist_id")' in html
+    assert '`/ui/security/${encodeURIComponent(tickerCode)}${managementSpaceQuery()}`' in html
+    assert 'const endpoint = collectionId === null ? "/watchlist" : `/watchlists/${collectionId}/items`;' in html
+    assert 'backLink.href = `${TOP_PAGE_URL}${managementSpaceQuery()}`;' in html
+    assert 'target === "watchlist"' in html
+    assert 'targetInput.value = collectionId === null ? "holdings" : "watchlist";' in html
+    assert 'if (INITIAL_WATCHLIST_ID !== null) {' in html
+    assert 'if (targetInput) targetInput.value = "watchlist";' in html
+    assert "const invalidateStockAiReview = () => {" in html
+    assert "state.stockAiRequestId += 1;" in html
+    assert "if (requestId !== state.stockAiRequestId) return;" in html
+    assert 'if (requestId === state.stockAiRequestId) {\n            setPortfolioAiButtonsDisabled(false);' in html
+    assert 'if (PAGE_MODE === "top" && requestedWatchlistId !== activeScopeId) return false;' in html
+    assert 'await loadDashboard(state.data?.selected_ticker_code || null, activeWatchlistId())' in html
+    assert "const syncWatchlistSelectionToAiTarget = () => {" in html
+    assert 'targetInput.value = "selected";' in html
+    assert 'targetInput.value = "watchlist";' in html
+    assert "共通AIパネルは「選択銘柄」を分析します。" in html
+    assert 'aria-label="${escapeAttr(`${item.name}（${publicSecurityCode(item.ticker_code)}）をAI分析対象に選択`)}"' in html
+    assert "const stockAiReviewContext = (payload) => {" in html
+    assert 'renderAiReviewSummary(data, review.contextLabel || "")' in html
+    assert 'title: String(review?.readerTitle || config.title)' in html
+    assert 'escapeHtml(item.name)' in html
+    assert 'escapeHtml(collection.name)' in html
+
+
+def test_mock_dashboard_data_scopes_watchlist_items_to_selected_collection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("APP_USE_MOCK", "true")
+
+    created_id: int | None = None
+    with TestClient(create_app()) as client:
+        try:
+            created = client.post("/watchlists", json={"name": "UI切替テスト"})
+            assert created.status_code == 201
+            created_id = created.json()["id"]
+
+            added = client.post(
+                f"/watchlists/{created_id}/items",
+                json={"ticker_code": "8035", "name": "東京エレクトロン", "market": "TSE Prime"},
+            )
+            assert added.status_code == 201
+
+            response = client.get(f"/ui/dashboard/data?watchlist_id={created_id}")
+            assert response.status_code == 200
+            payload = response.json()
+            assert payload["selected_watchlist_id"] == created_id
+            assert any(item["id"] == created_id for item in payload["watchlist_collections"])
+            assert [item["ticker_code"] for item in payload["watchlist_items"]] == ["8035"]
+
+            search = client.get(f"/securities/search?q=8035&watchlist_id={created_id}")
+            assert search.status_code == 200
+            assert search.json()[0]["in_watchlist"] is True
+        finally:
+            if created_id is not None:
+                client.delete(f"/watchlists/{created_id}")
+
+
 def test_dashboard_search_can_prepare_a_holding_without_saving_it(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -289,7 +405,7 @@ def test_dashboard_formats_structured_ai_reviews_as_safe_semantic_sections(
     assert 'setAiResultBusy("watchlist-ai-review-results", review.status === "loading")' in html
 
     assert "const renderAiReviewSummary = (data, contextLabel = \"\") => {" in html
-    assert "${renderAiReviewSummary(data)}" in html
+    assert '${renderAiReviewSummary(data, review.contextLabel || "")}' in html
     assert '${renderAiReviewSummary(data, "選択ウォッチリスト")}' in html
     assert html.count("renderAiReviewSummary(data") == 2
     assert 'data.mode ? aiModeLabel(data.mode) : ""' not in html

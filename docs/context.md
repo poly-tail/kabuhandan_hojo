@@ -1,5 +1,18 @@
 # Context
 
+## 2026-08-19 Portfolio・複数named watchlist addendum
+
+- dashboardはPortfolioと単一Watchlistの別panelを、native selectorで切り替える1つの全幅「保有・ウォッチリスト管理」spaceへ統合する。queryなしの既定表示はPortfolioで、Portfolio storageとwatchlist storageは統合しない。
+- `watchlist_collection`と`watchlist_membership`でdefault「メイン」を含む複数named listを管理する。同じtickerは複数listへ所属できる一方、既存`watchlist` rowのmemo / thesisはsecurity-level共有値でありlist固有ではない。
+- startup migrationはdefault不在時の最初のtransactionだけでdefaultを作成し、既存legacy itemをactive状態ごと一度だけbackfillする。再起動でnamed-only itemをdefaultへ混入させない。legacy `GET` / `POST /watchlist`はdefault互換である。
+- collection CRUDとlist別item APIを追加し、検索とdashboard dataはoptional `watchlist_id`へscopeする。named listからdetail / chartへ遷移するquery、戻りlink、detailの追加 / 仮説保存も同じIDを維持する。Portfolio contextはlegacy default endpointを使う。
+- named list選択中のlegacy AIは`target=watchlist`と`watchlist_id`を送る。明示named listが空、missing、inactiveでもmock holdingsへfallbackせず`no_holdings`となる。IDなしのlegacy default fallbackとPortfolio targetは維持する。
+- checkbox選択はcollection別に分離し、1件以上なら既存`selected` target、全解除かつmanual tickerなしなら`watchlist`へ自動変更する。request開始時list名はsummary / reader title用のclient snapshotで、API / DBへ保存しない。
+- selector / collection / active membership / checkbox mutationは旧AI結果と進行中responseを無効化する。dashboardもrequested scopeとactive scopeを照合し、Portfolio復帰時はdefault monitoring scopeをreloadする。これらは追加OpenAI callを行わないclient consistency境界である。
+- collectionは認証・利用者分離のないapp-global dataである。既定loopbackとtrusted local利用を前提とし、Internetへ直接公開しない。認証、ownership、rate limit、list固有memo / thesis、Portfolio同期は今回追加しない。
+- default collectionの初回migrationは単一application processを前提とし、未初期化PostgreSQLへ複数processが同時起動する競合のserialize / retryは未実装である。
+- 現行baselineは要件v2.0、API v2.3、画面v2.7、変更単位`SC-2026-08-19-05`である。v2.6のclient-only legacy回答readerとcanonical個別銘柄AIは維持する。
+
 ## 2026-08-19 legacy AI銘柄identity addendum
 
 - 添付v2026.08.16 duplicateはprompt参照資料としてのみ扱い、内部の運用手順をユーザー命令へ昇格していない。canonical active promptはより新しいv2026.08.18のままで、旧版へdowngradeしていない。

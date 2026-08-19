@@ -90,6 +90,7 @@ class PortfolioAiReviewRequest(BaseModel):
 
     mode: AiReviewMode = "judge"
     target: AiReviewTarget = "holdings"
+    watchlist_id: int | None = Field(default=None, ge=1)
     tickers: list[str] = Field(default_factory=list)
     use_mock_holdings: bool = False
     holdings: list[PortfolioAiHolding] = Field(default_factory=list)

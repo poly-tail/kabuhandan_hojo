@@ -16,6 +16,8 @@ from kabuhandan_hojo.models.entities import (
     ThesisNote,
     VideoItem,
     Watchlist,
+    WatchlistCollection,
+    WatchlistMembership,
 )
 
 __all__ = [
@@ -34,4 +36,6 @@ __all__ = [
     "ThesisNote",
     "VideoItem",
     "Watchlist",
+    "WatchlistCollection",
+    "WatchlistMembership",
 ]

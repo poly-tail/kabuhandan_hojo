@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-08-19 Portfolio・複数named watchlist management
+
+- `watchlist_collection`と`watchlist_membership`を追加し、既存ticker-level `watchlist` rowを複数named listから共有できるようにした。同じtickerは複数listへ所属でき、memo / thesisはsecurity-level共有、membershipのsort / activeはlist固有である。
+- startup migrationはdefault `system_key=default`の「メイン」を初回transactionで作成し、既存legacy itemをactive状態ごと一度だけbackfillする。default存在後はbackfillを繰り返さず、named-only itemをdefaultへ漏らさない。
+- `GET` / `POST /watchlists`、`PATCH` / `DELETE /watchlists/{collection_id}`、`GET` / `POST /watchlists/{collection_id}/items`、`DELETE /watchlists/{collection_id}/items/{ticker_code}`を追加した。legacy `GET` / `POST /watchlist`はdefault互換を維持する。
+- collection名はNFKC + trim、casefold identityで重複を拒否する。missing / inactiveは404、default削除は409、成功DELETEは204である。`GET /securities/search`へoptional `watchlist_id`を追加し、`in_watchlist`を指定listへscopeした。
+- dashboardのPortfolio / Watchlist別panelを単一の全幅「保有・ウォッチリスト管理」spaceへ統合した。selector、inline作成 / 名前変更 / non-default削除、named empty state、検索追加、membership解除、collection別checkbox stateを追加した。
+- dashboard data、Focus Board、alerts、検索、detail / chart往復、detailの追加 / 仮説保存へ`watchlist_id`を維持する。Portfolio contextではlegacy default endpointを使う。invalid dashboard IDはdefaultへfallbackする。
+- named list選択中のlegacy AIは`target=watchlist`と`watchlist_id`を送る。明示named listがempty / missing / inactiveでもmock holdingsへfallbackせず`no_holdings`となる。IDなしlegacy default fallback、quota、usage、model、readerは維持した。
+- URL queryからのnamed初期表示 / AI target、checkbox選択による既存`selected` target自動切替、全解除時のlist全体復帰、request開始時list名のsummary / reader title snapshotを追加した。snapshotをAPI、DB、history、cache、Web Storageへ保存しない。
+- selector、collection、active membership、checkbox mutationで旧AI結果と進行中responseを無効化し、dashboardのrequested / active scope不一致responseも破棄する。Portfolioへ戻る際はdefault monitoring scopeをreloadし、これらのclient制御で追加OpenAI callを行わない。
+- collection / membershipは認証・利用者分離のないapp-global dataである。Portfolio storage、canonical個別銘柄AI、active prompt、J-Quants同期は変更していない。
+- 要件v2.0、API v2.3、画面v2.7、`SC-2026-08-19-05`を追加し、旧versioned文書を変更せずcurrent baselineを更新する。
+
 ## 2026-08-19 legacy AI current-result large reader
 
 - dashboardのlegacy Portfolio / Watchlist AI結果へ`回答を別タブ／ウィンドウで大きく表示`action linkを追加する画面契約を定義した。`status=success`（`prompt_only`除外）または非空`raw_model_output`を持つ`json_parse_failed`だけを対象とし、idle、loading、通信失敗、生応答なしerrorでは表示しない。
