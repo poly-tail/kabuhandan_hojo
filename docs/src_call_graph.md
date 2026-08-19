@@ -1,5 +1,18 @@
 # Source Call Graph
 
+## 2026-08-19 legacy軽量スキャンJSON検証
+
+1. dashboard `軽量スキャン` -> `POST /api/ai/stock-review` -> `PortfolioAiReviewService.review()` -> target / quota / cache判定
+2. `build_stock_analysis_prompt()` -> scanner用の30項目未満stock schema + 7値`judgement` enum -> top-level / portfolio summary / stock itemは`additionalProperties=false`
+3. primary Responses API -> provider usageを`api_calls`へ記録 -> `parse_ai_review_result()`が本文全体を先にJSON decode -> valid array rootはobject抽出せず`root_shape`
+4. valid object -> request mode schema外のroot key（service-owned status/cache/parse fieldを含む）を拒否 -> `concentration_comment` / `summary_view`をcanonical summary fieldへ移動 -> stock object / judgement string / alias stringを検証 -> free-text judgementをcanonical codeへ正規化 -> Pydantic validation
+5. parse失敗 -> `json_syntax` / `root_shape` / `schema_validation`へ分類 -> 長い応答はWeb検索なしrepairを最大1回 -> repair provider usageも`api_calls`へ記録
+6. repair成功 -> `status=success` -> `review_runs`を1加算 -> `save_result=true`ならhistory/cache保存
+7. repair失敗かつ表示可能なraw output -> service-local `raw_fallback=true` -> `status=json_parse_failed` + `parse_failure_kind` + `raw_model_output` -> provider status非依存 -> `review_runs`非加算 -> cache保存なし -> `save_result=true`なら調査用historyだけ保存
+8. route response -> dashboard `aiReviewResultStatusLabel()` -> JSON構文 / root形式 / 項目形式を赤いerror cardで表示。raw outputがあれば同card内へescapeして表示
+
+canonical `POST /api/ai/analyses`はこのflowへ接続せず、plain `response.output_text`と独立した保存契約を維持します。
+
 ## 2026-08-18 東証/J-Quants銘柄マスター同期
 
 1. dashboard初期化 -> `GET /securities/master/status` -> `IngestionService.get_security_master_status()` -> 最新`complete=true`かつ`is_current_snapshot=true`の`security_master_sync_run`と現在のactive countを返す
@@ -33,12 +46,12 @@
 2. usage GET -> `LegacyAiUsageLedger.summary()` -> `data/ai_review_usage_v2.json`のJST当日bucketと当月bucketを集計 -> `PortfolioAiUsageSummary`を`no-store`で返す
 3. legacy review送信 -> mock / cache / prompt-only等の非API branchを先に判定 -> live branchだけ日次`review_runs < OPENAI_DAILY_REQUEST_LIMIT(300)`を確認
 4. primary Responses API完了 -> provider usageからinput / cached input / output / reasoning detailと実`web_search_call`数を抽出 -> `record_provider_response()`
-5. JSON parse失敗 -> repair Responses APIが完了すれば別provider callとして同じledgerへ記録 -> parse成功またはraw fallback成功時だけtop-level `record_review_success()`を1回実行
+5. JSON parse失敗 -> repair Responses APIが完了すれば別provider callとして同じledgerへ記録 -> 構造化parse成功時だけtop-level `record_review_success()`を1回実行。raw output救済は`status=json_parse_failed`のため成功回数へ加算しない
 6. `LegacyAiUsageLedger` -> model別versioned pricingと実Web検索USD 0.01/callで概算。unknown modelまたはusage不整合は価格を推測せず`unpriced_api_calls`へ記録
 7. ledger更新 -> process内`RLock` -> temporary JSONをflush/fsync -> `os.replace`で`data/ai_review_usage_v2.json`を更新。Windowsの一時的な`PermissionError`は短く再試行し、prompt、質問、回答、APIキーは保存しない
 8. Portfolio / Watchlist review終了 -> usage GETを再実行 -> UIに本日/今月の成功review、OpenAI呼出数、残数、概算、未算定/旧履歴注記を表示
 
-quotaの`review_runs`は銘柄数ではなく成功した一括review数です。provider `api_calls`とは別で、repair等により`api_calls > review_runs`になり得ます。旧`data/ai_review_usage.json`はv2へ移行せず、canonical `/api/ai/analyses`はこのflowへ接続しません。
+quotaの`review_runs`は銘柄数ではなく構造化まで成功した一括review数です。provider `api_calls`とは別で、repairまたは最終parse失敗により`api_calls > review_runs`になり得ます。旧`data/ai_review_usage.json`はv2へ移行せず、canonical `/api/ai/analyses`はこのflowへ接続しません。
 
 ## 2026-08-17 canonical AI安全性・prompt表記修正
 

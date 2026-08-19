@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-08-19 legacy lightweight scanner JSON validation
+
+- 実履歴の軽量スキャン失敗を再検証し、生応答が有効なJSONでありながら`portfolio_summary.concentration_comment` / `summary_view`がPydanticの`extra=forbid`へ抵触していたことを特定した。
+- legacy aliasを`concentration_risk` / `overall_view`へcanonical値優先で正規化し、free-text judgementを7つのcanonical codeへ変換するようにした。互換aliasだけではJSON repairを呼ばない。
+- mode別JSON Schemaのfield集合をruntime Pydantic model以内へ揃え、top-level、portfolio summary、stock itemを`additionalProperties=false`にした。scanner stock schemaは30項目未満へ縮小し、`judgement`をenum化した。
+- provider rootをrequest mode schemaの許可keyへ限定し、`status` / `error` / `cache_hit` / `parse_failure_kind`等のservice-owned fieldを拒否するようにした。有効なJSON配列は内部objectを抽出せず`root_shape`とし、非object stock、非string judgement、非string互換aliasは`schema_validation`とした。
+- model-output例外を`json_syntax` / `root_shape` / `schema_validation`へ分け、Pydantic `ValidationError`をJSON構文エラーとして誤報しないようにした。安全なrepair失敗logは分類と例外型だけを記録し、raw出力・例外detailを記録しない。
+- repair後も構造化できないraw output救済をservice-localなparse path flagで判定して`status=json_parse_failed`へ変更し、provider statusから成功/失敗を決めないようにした。`review_runs`非加算、cache保存・読出し禁止、`save_result=true`でのhistory保存可とし、provider usageはprimary/repairとも`api_calls`へ残す。
+- dashboardで`json_parse_failed`を赤いerror cardにし、JSON構文・root形式・項目形式を別labelで表示するようにした。
+- builder、service、usage/cache/history、safe log、UIの回帰testを追加し、canonical個別銘柄AIとJ-Quants経路を変更していない。
+- 要件 v1.8、API v2.1、画面 v2.3と`SC-2026-08-19-01`を追加し、旧versioned文書を変更せず現行baselineを更新した。
+
 ## 2026-08-18 TSE / J-Quants listed-issue master sync safety
 
 - `GET /securities/master/status`を追加し、最新complete/current J-Quants同期のscope、情報基準日、同期時刻、完全性、ローカル/J-Quants有効件数をcredentialなしで確認できるようにした。

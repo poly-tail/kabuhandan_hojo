@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Generator
+import json
 from pathlib import Path
 from types import SimpleNamespace
 import sys
@@ -19,7 +20,7 @@ from app.schemas.portfolio_ai import PortfolioAiHolding, PortfolioAiReviewReques
 from app.services import ai_usage as ai_usage_module
 from app.services.monitoring_runtime import get_monitoring_container, get_monitoring_settings
 from app.services import portfolio_ai_review as portfolio_ai_review_module
-from app.services.portfolio_ai_review import portfolio_ai_review_service
+from app.services.portfolio_ai_review import AiReviewOutputError, portfolio_ai_review_service
 from kabuhandan_hojo.models import Base as MonitoringBase
 
 
@@ -490,12 +491,223 @@ def test_ai_review_parse_failure_returns_raw_model_output(monkeypatch: pytest.Mo
     payload = response.json()
     assert payload["status"] == "json_parse_failed"
     assert payload["error"]["code"] == "json_parse_failed"
+    assert payload["parse_failure_kind"] == "json_syntax"
     assert payload["raw_model_output"] == "not-json"
     assert payload["stocks"] == []
     usage_payload = usage_response.json()
     assert usage_payload["today"]["review_runs"] == 0
     assert usage_payload["today"]["api_calls"] == 1
     assert usage_payload["today"]["unpriced_api_calls"] == 1
+
+
+def test_scanner_accepts_legacy_concentration_comment_without_repair(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("APP_USE_MOCK", "true")
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    raw_output = json.dumps(
+        {
+            "generated_at": "2026-08-19T12:24:34+09:00",
+            "mode": "scanner",
+            "portfolio_summary": {
+                "concentration_comment": "集中リスクを確認する",
+            },
+            "stocks": [
+                {
+                    "ticker": "285A0",
+                    "name": "キオクシアホールディングス",
+                    "judgement": "毎日見られないなら縮小候補",
+                    "judgement_label": "非監視なら縮小候補",
+                }
+            ],
+            "sources": [],
+            "warnings": [],
+            "raw_model_output": None,
+        },
+        ensure_ascii=False,
+    )
+
+    def fake_call_openai(**_: object) -> tuple[str, PortfolioAiUsage]:
+        return raw_output, PortfolioAiUsage(input_tokens=10, output_tokens=20)
+
+    def fail_if_repair_is_called(**_: object) -> tuple[str, PortfolioAiUsage]:
+        raise AssertionError("compatible JSON must not trigger another OpenAI call")
+
+    monkeypatch.setattr(portfolio_ai_review_service, "_call_openai", fake_call_openai)
+    monkeypatch.setattr(portfolio_ai_review_service, "_repair_model_output_json", fail_if_repair_is_called)
+
+    with TestClient(create_app()) as client:
+        response = client.post(
+            "/api/ai/stock-review",
+            json={
+                "mode": "scanner",
+                "target": "selected",
+                "holdings": [
+                    {
+                        "ticker": "285A0",
+                        "name": "キオクシアホールディングス",
+                        "market": "TSE",
+                        "quantity": 100,
+                    }
+                ],
+                "include_web_search": False,
+                "save_result": False,
+                "use_cache": False,
+            },
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "success"
+    assert payload["portfolio_summary"]["concentration_risk"] == "集中リスクを確認する"
+    assert payload["stocks"][0]["judgement"] == "reduce_risk"
+    assert payload["raw_model_output"] is None
+    assert payload["actual_usage"]["api_calls"] == 1
+
+
+def test_valid_json_schema_failure_is_not_reported_as_json_syntax_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    monkeypatch.setenv("APP_USE_MOCK", "true")
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    raw_output = json.dumps(
+        {
+            "generated_at": "2026-08-19T12:24:34+09:00",
+            "mode": "scanner",
+            "portfolio_summary": {
+                "unsupported_summary_field": "x" * 220,
+            },
+            "stocks": [],
+            "sources": [],
+            "warnings": [],
+            "raw_model_output": None,
+        },
+        ensure_ascii=False,
+    )
+
+    def fake_call_openai(**_: object) -> tuple[str, PortfolioAiUsage]:
+        return raw_output, PortfolioAiUsage(input_tokens=10, output_tokens=20)
+
+    repair_calls = 0
+
+    def fake_repair(**_: object) -> tuple[str, PortfolioAiUsage]:
+        nonlocal repair_calls
+        repair_calls += 1
+        raise ValueError("sensitive repair detail")
+
+    monkeypatch.setattr(portfolio_ai_review_service, "_call_openai", fake_call_openai)
+    monkeypatch.setattr(portfolio_ai_review_service, "_repair_model_output_json", fake_repair)
+
+    with TestClient(create_app()) as client:
+        response = client.post(
+            "/api/ai/stock-review",
+            json={
+                "mode": "scanner",
+                "target": "selected",
+                "holdings": [
+                    {
+                        "ticker": "7203",
+                        "name": "トヨタ自動車",
+                        "market": "TSE",
+                        "quantity": 100,
+                    }
+                ],
+                "include_web_search": False,
+                "save_result": True,
+                "use_cache": True,
+            },
+        )
+        usage_response = client.get("/api/ai/stock-review/usage")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "json_parse_failed"
+    assert payload["error"]["code"] == "json_parse_failed"
+    assert payload["parse_failure_kind"] == "schema_validation"
+    assert "有効なJSON" in payload["portfolio_summary"]["overall_view"]
+    assert "JSON構文を解析できません" not in payload["portfolio_summary"]["overall_view"]
+    assert repair_calls == 1
+    assert usage_response.json()["today"]["review_runs"] == 0
+    cache_path = portfolio_ai_review_module.AI_REVIEW_CACHE_PATH
+    assert cache_path == tmp_path / "ai_review_cache.json"
+    assert not cache_path.exists()
+    portfolio_ai_review_service._write_json(cache_path, {"legacy-fallback": payload})
+    assert portfolio_ai_review_service._load_cached_response("legacy-fallback") is None
+    log_text = caplog.text
+    assert "error_type=ValueError" in log_text
+    assert "x" * 220 not in log_text
+    assert "sensitive repair detail" not in log_text
+
+
+def test_scanner_accepts_legacy_summary_view_alias() -> None:
+    raw_output = json.dumps(
+        {
+            "generated_at": "2026-08-18T22:48:00+09:00",
+            "mode": "scanner",
+            "portfolio_summary": {"summary_view": "全体所見"},
+            "stocks": [],
+            "sources": [],
+            "warnings": [],
+            "raw_model_output": None,
+        },
+        ensure_ascii=False,
+    )
+
+    parsed = portfolio_ai_review_service.parse_ai_review_result(raw_output)
+
+    assert parsed.portfolio_summary.overall_view == "全体所見"
+
+
+@pytest.mark.parametrize(
+    ("raw_output", "failure_kind"),
+    [
+        ("[]", "root_shape"),
+        (
+            '[{"generated_at":"2026-08-19T12:24:34+09:00","mode":"scanner",'
+            '"portfolio_summary":{},"stocks":[],"sources":[],"warnings":[],'
+            '"raw_model_output":null}]',
+            "root_shape",
+        ),
+        ("{}", "schema_validation"),
+        (
+            '{"generated_at":"2026-08-19T12:24:34+09:00","mode":"scanner",'
+            '"portfolio_summary":{},"stocks":"not-a-list","sources":[],"warnings":[],'
+            '"raw_model_output":null}',
+            "schema_validation",
+        ),
+        (
+            '{"generated_at":"2026-08-19T12:24:34+09:00","mode":"scanner",'
+            '"portfolio_summary":{},"stocks":["not-an-object"],"sources":[],"warnings":[],'
+            '"raw_model_output":null}',
+            "schema_validation",
+        ),
+        (
+            '{"generated_at":"2026-08-19T12:24:34+09:00","mode":"scanner",'
+            '"portfolio_summary":{},"stocks":[{"ticker":"7203","name":"トヨタ",'
+            '"judgement":123}],"sources":[],"warnings":[],"raw_model_output":null}',
+            "schema_validation",
+        ),
+        (
+            '{"generated_at":"2026-08-19T12:24:34+09:00","mode":"scanner",'
+            '"portfolio_summary":{"summary_view":["not-a-string"]},"stocks":[],'
+            '"sources":[],"warnings":[],"raw_model_output":null}',
+            "schema_validation",
+        ),
+        (
+            '{"generated_at":"2026-08-19T12:24:34+09:00","mode":"scanner",'
+            '"portfolio_summary":{},"stocks":[],"sources":[],"warnings":[],'
+            '"raw_model_output":null,"status":"json_parse_failed"}',
+            "schema_validation",
+        ),
+    ],
+)
+def test_parse_rejects_invalid_root_and_required_shapes(raw_output: str, failure_kind: str) -> None:
+    with pytest.raises(AiReviewOutputError) as exc_info:
+        portfolio_ai_review_service.parse_ai_review_result(raw_output)
+
+    assert exc_info.value.failure_kind == failure_kind
 
 
 def test_ai_review_repairs_long_non_json_output(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -585,12 +797,18 @@ def test_ai_review_displays_raw_output_when_repair_fails(monkeypatch: pytest.Mon
     monkeypatch.setenv("APP_USE_MOCK", "true")
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
 
-    raw_output = '{"generated_at":"2026-06-15T13:00:00+09:00","mode":"scanner","stocks":['
+    raw_output = (
+        '{"generated_at":"2026-06-15T13:00:00+09:00","mode":"scanner","stocks":['
+        + "x" * 250
+    )
+    repair_calls = 0
 
     def fake_call_openai(**_: object) -> tuple[str, PortfolioAiUsage]:
         return (raw_output, PortfolioAiUsage(input_tokens=10, output_tokens=20))
 
     def fake_repair(**_: object) -> tuple[str, PortfolioAiUsage]:
+        nonlocal repair_calls
+        repair_calls += 1
         raise ValueError("repair failed")
 
     monkeypatch.setattr(portfolio_ai_review_service, "_call_openai", fake_call_openai)
@@ -617,13 +835,18 @@ def test_ai_review_displays_raw_output_when_repair_fails(monkeypatch: pytest.Mon
                 "use_cache": False,
             },
         )
+        usage_response = client.get("/api/ai/stock-review/usage")
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["status"] == "success"
+    assert payload["status"] == "json_parse_failed"
+    assert payload["error"]["code"] == "json_parse_failed"
+    assert payload["parse_failure_kind"] == "json_syntax"
     assert payload["raw_model_output"] == raw_output
     assert payload["portfolio_summary"]["market_temperature"] == "raw_output_fallback"
     assert any("生応答" in warning for warning in payload["warnings"])
+    assert repair_calls == 1
+    assert usage_response.json()["today"]["review_runs"] == 0
 
 
 def test_openai_call_uses_structured_output_when_web_search_is_enabled(monkeypatch: pytest.MonkeyPatch) -> None:

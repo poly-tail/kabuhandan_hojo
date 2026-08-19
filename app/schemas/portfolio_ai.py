@@ -33,6 +33,7 @@ ReviewStatus = Literal[
     "target_limit_exceeded",
     "daily_limit_exceeded",
 ]
+ParseFailureKind = Literal["json_syntax", "root_shape", "schema_validation"]
 HoldingsSource = Literal["request", "database", "watchlist", "candidates", "mock", "none"]
 Verbosity = Literal["short", "normal", "detailed"]
 RiskLevel = Literal["low", "medium", "high", "unknown"]
@@ -357,6 +358,7 @@ class PortfolioAiReviewResponse(BaseModel):
     sources: list[PortfolioAiReviewSource] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
     raw_model_output: str | None = None
+    parse_failure_kind: ParseFailureKind | None = None
     manual_prompt: str | None = None
     status: ReviewStatus = "success"
     error: PortfolioAiReviewError | None = None

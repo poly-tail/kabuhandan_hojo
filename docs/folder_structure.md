@@ -1,5 +1,13 @@
 # Folder Structure
 
+## 2026-08-19 legacy scanner validation addendum
+
+- `app/prompts/stock_analysis/builder.py`: Pydantic field以内のmode別JSON Schema、scanner軽量field、judgement enum。
+- `app/schemas/portfolio_ai.py`: legacy responseのnullable `parse_failure_kind`。
+- `app/services/portfolio_ai_review.py`: summary alias / judgement正規化、parse失敗3分類、raw output救済のquota/cache/history境界。
+- `app/api/routes/ui.py`: `json_parse_failed`の赤いerror cardと原因別label。
+- `tests/unit/test_stock_analysis_prompt_builder.py`、`test_portfolio_ai_review.py`、`test_mock_ui.py`: schema、service、usage/cache/history、UI回帰test。
+
 ## 2026-08-18 J-Quants銘柄マスター同期 addendum
 
 - `app/schemas/security_master_sync.py`: `GET /securities/master/status`と`POST /securities/master/sync`のscope、provenance、完全性、件数schema。
@@ -22,12 +30,12 @@
 - `tests/unit/test_mock_ui.py`: 検索結果action、公開code表示/prefill、数量focus、非自動保存のUI contract。
 - `tests/unit/test_phase0_api.py`: portfolio API/CSVの公開4文字alias、既存raw masterへの紐付け、placeholder非作成を確認します。
 
-## 2026-08-18 specification docs addendum
+## 2026-08-19 specification docs addendum
 
-- `docs/requirements/requirements_v1.7.md`: v1.6を累積し、BYOK/private local master sync、scope、完全性、ownership、historical保護を追加。
-- `docs/specs/api_spec_v2.0.md`: v1.9を累積し、status/sync response、provenance、count、fallback/error境界を追加。
-- `docs/screen_specs/screen_spec_v2.2.md`: v2.1を累積し、同期button、status、情報基準日、件数feedbackを追加。
-- `docs/spec_change_history.md`: `SC-2026-08-18-02`の変更理由、互換性、非対象、既知制約。`SC-2026-08-18-01`は履歴として維持。
+- `docs/requirements/requirements_v1.8.md`: v1.7を累積し、legacy scannerのschema/runtime一致、失敗status、quota/cache/history境界を追加。
+- `docs/specs/api_spec_v2.1.md`: v2.0を累積し、alias正規化、parse失敗3分類、scanner output schemaを追加。
+- `docs/screen_specs/screen_spec_v2.3.md`: v2.2を累積し、`json_parse_failed`の赤いerror cardと分類labelを追加。
+- `docs/spec_change_history.md`: `SC-2026-08-19-01`の変更理由、互換性、非対象、既知制約。`SC-2026-08-18-02`以前は履歴として維持。
 
 ## 2026-08-17 specification docs addendum
 

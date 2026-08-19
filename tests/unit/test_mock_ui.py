@@ -251,3 +251,21 @@ def test_dashboard_search_can_prepare_a_holding_without_saving_it(
     prepare_handler = html.index('event.target.closest("[data-prepare-portfolio]")')
     detail_handler = html.index('event.target.closest("[data-select-ticker], [data-open-ticker]")')
     assert prepare_handler < detail_handler
+
+
+def test_dashboard_distinguishes_ai_json_syntax_and_schema_failures(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("APP_USE_MOCK", "true")
+
+    with TestClient(create_app()) as client:
+        response = client.get("/ui/dashboard")
+
+    assert response.status_code == 200
+    html = response.text
+    assert 'data?.parse_failure_kind === "schema_validation"' in html
+    assert 'data?.parse_failure_kind === "root_shape"' in html
+    assert "JSON項目形式エラー" in html
+    assert "JSONルート形式エラー" in html
+    assert "JSON構文エラー" in html
+    assert html.count("aiReviewResultStatusLabel(data)") >= 2

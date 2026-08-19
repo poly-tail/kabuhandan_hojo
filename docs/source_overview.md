@@ -1,5 +1,13 @@
 # Source Overview
 
+## 2026-08-19 legacy scanner validation addendum
+
+- `app/prompts/stock_analysis/builder.py`はmode別output schemaをruntime model field以内へ揃え、主要objectを`additionalProperties=false`にします。scanner stock fieldを30項目未満へ絞り、`judgement`を7値enumにします。
+- `app/services/portfolio_ai_review.py`は`concentration_comment` / `summary_view`をcanonical summary fieldへ正規化し、free-text judgementをcanonical codeへ変換します。parse errorを`json_syntax` / `root_shape` / `schema_validation`へ分け、valid JSONのschema mismatchを構文エラーにしません。
+- 同serviceのraw output救済は`status=json_parse_failed`を維持し、成功quotaを増やさずcacheへ保存しません。`save_result=true`のlocal history保存とprovider usage記録は維持します。安全なlogは失敗分類と例外型だけを持ち、raw outputと例外detailを出しません。
+- `app/schemas/portfolio_ai.py`はnullableな`parse_failure_kind`を公開response/historyへ追加し、`app/api/routes/ui.py`は3分類を利用者向けの赤いerror labelへ変換します。
+- `tests/unit/test_stock_analysis_prompt_builder.py`、`test_portfolio_ai_review.py`、`test_mock_ui.py`がschema/model一致、alias互換、失敗分類、quota/cache/history、UI表示を固定します。
+
 ## 2026-08-18 東証/J-Quants銘柄マスター同期 addendum
 
 - `src/kabuhandan_hojo/connectors/jquants.py`はJ-Quants上場銘柄masterを全page取得し、numeric普通株の末尾`0`だけを4桁化します。非zero suffixの優先株等と英数字raw identifierを保持し、異なるraw codeの正規化衝突、pagination循環、page上限をfail closedにします。429は`Retry-After`を尊重するbounded retryです。timeout/network/invalid JSONは安全な`ConnectorError`へ変換し、HTTP errorにはstatusだけを残してprovider response bodyを除外します。
@@ -21,10 +29,10 @@
 - `app/services/portfolio.py`は入力tickerの完全一致を優先し、完全一致がない4文字数字・英字codeだけを、一意な`<code>0`の`ticker_code`/`local_code`へ解決します。`285A`は既存`285A0`へ紐付き、placeholder重複を防ぎます。
 - この互換処理はportfolio登録境界だけです。`security_master` primary key migrationとJ-Quants connector全体のcanonical化は行いません。
 
-## 2026-08-18 specification baseline addendum
+## 2026-08-19 specification baseline addendum
 
-- `docs/requirements/requirements_v1.7.md`、`docs/specs/api_spec_v2.0.md`、`docs/screen_specs/screen_spec_v2.2.md`を現行仕様の正本とします。
-- `SC-2026-08-18-02`がBYOK/private local master sync、scope、完全性、provenance、count、UI statusを追跡し、`SC-2026-08-18-01`と旧versioned文書は履歴として保持します。
+- `docs/requirements/requirements_v1.8.md`、`docs/specs/api_spec_v2.1.md`、`docs/screen_specs/screen_spec_v2.3.md`を現行仕様の正本とします。
+- `SC-2026-08-19-01`がlegacy軽量スキャンのschema/runtime整合、parse失敗分類、quota/cache/history/UI境界を追跡し、`SC-2026-08-18-02`以前と旧versioned文書は履歴として保持します。
 
 ## 2026-08-17 specification baseline addendum
 

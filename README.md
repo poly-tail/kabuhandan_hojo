@@ -1,5 +1,16 @@
 # kabuhandan_hojo Phase 0-2
 
+## 2026-08-19 軽量スキャンJSON契約修正
+
+- legacy `POST /api/ai/stock-review`の軽量スキャンで、valid JSONの`portfolio_summary.concentration_comment`と`summary_view`を、それぞれcanonicalな`concentration_risk`と`overall_view`へ追加OpenAI callなしで正規化します。
+- mode別JSON Schemaをruntime Pydantic modelのfieldへ揃え、top-level、portfolio summary、stock itemを`additionalProperties=false`にしました。scannerのstock schemaは30項目未満へ縮小し、`judgement`を7つのcanonical codeへ限定します。
+- provider JSON rootはrequest modeのoutput schemaが許可するkeyだけを受理します。`status`、`error`、`cache_hit`、`parse_failure_kind`等のservice-owned fieldをmodelが返しても`schema_validation`です。有効なJSON配列は内部objectを抜き出さず`root_shape`とします。
+- `stocks`の各要素はobject、存在する`judgement`と互換summary aliasはstringでなければなりません。異なる型を黙って破棄・文字列化せず`schema_validation`にします。
+- parse失敗は`json_syntax`（JSON構文）、`root_shape`（root形式）、`schema_validation`（項目・型・Pydantic不一致）へ分けます。有効なJSONの項目不一致を「JSON構文エラー」とは表示しません。
+- JSON整形retry後も構造化できない場合、生応答は調査用に表示・履歴保存できますが、`status=json_parse_failed`の失敗のままです。raw fallback判定はservice自身のparse経路だけが設定し、providerが返したstatusには依存しません。成功review回数へ加算せず、cacheへ保存・読出ししません。
+- dashboardは上記3分類を赤いerror cardで表示します。失敗attemptでもprimary/repairのprovider call、token、概算額は発生し得て、`api_calls`へ記録されます。
+- canonical `POST /api/ai/analyses`の`gpt-5.6-terra`、`STANDARD`、plain `response.output_text`、`store=false`、ローカルSQL保存契約は変更していません。
+
 ## 2026-08-18 東証/J-Quants銘柄マスター同期
 
 - dashboardの`東証全銘柄を同期`は、利用者自身の`JQUANTS_API_KEY`でJ-Quants上場銘柄マスターを取得し、git管理外のローカルDBへ保存します。取得した完全な一覧をこのpublic repositoryへ同梱・再配布しません。
@@ -51,9 +62,9 @@
 - prompt sourceの選択範囲はv2026.08.17由来の共通OS、必要な共通入力、no-tools制約、module 3.1だけを維持します。active bundleは表記正規化版v2026.08.18で、3.2〜3.14やJSON Schemaは送りません。
 - 保存済み回答APIには認証・利用者分離・削除・保持期限がまだありません。ローカルDBはGit管理外ですが、現状はtrusted local環境だけで利用してください。
 
-## 2026-08-18 仕様baseline更新
+## 2026-08-19 仕様baseline更新
 
-- 現行正本を要件 v1.7、API v2.0、画面 v2.2へ更新し、BYOKによる東証/J-Quants上場issueのprivate local full sync、status/provenance/count、完全な現行snapshotだけの安全なdeactivationを反映しました。v1.6 / v1.9 / v2.1までの検索・Portfolio・AI・usage契約も累積継承します。
+- 現行正本を要件 v1.8、API v2.1、画面 v2.3へ更新し、legacy軽量スキャンのalias正規化、schema/runtime一致、parse失敗分類、失敗quota/cache/history/UI境界を反映しました。v1.7 / v2.0 / v2.2までのJ-Quants、検索・Portfolio、canonical AI、usage契約も累積継承します。
 - 仕様版の対応、変更理由、互換性、非対象、既知制約は `docs/spec_change_history.md` で追跡します。
 - 旧versioned文書とlegacy AI endpointは履歴・互換機能として保持しています。
 

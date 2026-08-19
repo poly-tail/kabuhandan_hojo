@@ -73,6 +73,15 @@ WEB_SEARCH_SOURCE_PRIORITY = [
 ]
 
 RISK_LEVELS = ["low", "medium", "high", "unknown"]
+JUDGEMENT_CODES = [
+    "hold",
+    "buy_more_candidate",
+    "take_profit_candidate",
+    "reduce_risk",
+    "watch",
+    "avoid_new_buy",
+    "urgent_review",
+]
 BUSINESS_THESIS_STRENGTHS = ["strong", "normal", "weak", "unknown"]
 HOLD_WITHOUT_DAILY_MONITORING_DECISIONS = [
     "yes",
@@ -232,7 +241,7 @@ def get_output_schema_for_mode(mode: AiReviewMode) -> dict[str, Any]:
     stock_properties: dict[str, Any] = {
         "ticker": {"type": "string"},
         "name": {"type": "string"},
-        "judgement": {"type": "string"},
+        "judgement": {"type": "string", "enum": JUDGEMENT_CODES},
         "judgement_label": {"type": "string"},
         "confidence": {"type": "number"},
         "time_horizon_views": {
@@ -314,6 +323,73 @@ def get_output_schema_for_mode(mode: AiReviewMode) -> dict[str, Any]:
     if mode == "critical":
         required.extend(["bullish_case", "bearish_case", "base_case", "position_size_risk", "event_risk", "gap_risk", "critical_check"])
 
+    if mode == "scanner":
+        scanner_stock_fields = {
+            "ticker",
+            "name",
+            "judgement",
+            "judgement_label",
+            "confidence",
+            "time_horizon_views",
+            "short_reason",
+            "key_risks",
+            "invalidation",
+            "needs_analyst_mode",
+            "needs_judge_mode",
+            "needs_long_term_carry_check",
+            "non_monitoring_hold_risk",
+            "verification_labels",
+            "watch_points",
+            "risk_flags",
+            "needs_detail_analysis",
+            "key_points",
+            "holder_action",
+            "stop_or_reduce_condition",
+            "execution_plan",
+            "critical_check",
+            "sources",
+        }
+        stock_properties = {
+            key: value for key, value in stock_properties.items() if key in scanner_stock_fields
+        }
+
+    portfolio_summary_properties = {
+        "overall_view": {"type": "string"},
+        "portfolio_summary": {"type": "string"},
+        "market_temperature": {"type": "string"},
+        "overall_risk": {"type": "string", "enum": ["low", "medium", "high"]},
+        "buy_candidates": {"type": "array", "items": {"type": "string"}},
+        "sell_or_reduce_candidates": {"type": "array", "items": {"type": "string"}},
+        "hold_priority": {"type": "array", "items": {"type": "string"}},
+        "cash_allocation_view": {"type": "string"},
+        "concentration_risk": {"type": "string"},
+        "theme_exposure": {"type": "array", "items": {"type": "string"}},
+        "non_monitoring_reduce_candidates": {"type": "array", "items": {"type": "string"}},
+        "core_position_candidates": {"type": "array", "items": {"type": "string"}},
+        "exit_or_rotate_candidates": {"type": "array", "items": {"type": "string"}},
+        "action_plan_today": {"type": "array", "items": {"type": "string"}},
+        "invalidation_for_portfolio": {"type": "string"},
+        "top_risks": {"type": "array", "items": {"type": "string"}},
+    }
+    if mode == "scanner":
+        scanner_summary_fields = {
+            "overall_view",
+            "portfolio_summary",
+            "market_temperature",
+            "overall_risk",
+            "concentration_risk",
+            "non_monitoring_reduce_candidates",
+            "core_position_candidates",
+            "exit_or_rotate_candidates",
+            "action_plan_today",
+            "top_risks",
+        }
+        portfolio_summary_properties = {
+            key: value
+            for key, value in portfolio_summary_properties.items()
+            if key in scanner_summary_fields
+        }
+
     return {
         "type": "object",
         "properties": {
@@ -323,12 +399,8 @@ def get_output_schema_for_mode(mode: AiReviewMode) -> dict[str, Any]:
             "market_summary": {"type": "object", "additionalProperties": True},
             "portfolio_summary": {
                 "type": "object",
-                "properties": {
-                    "non_monitoring_reduce_candidates": {"type": "array", "items": {"type": "string"}},
-                    "core_position_candidates": {"type": "array", "items": {"type": "string"}},
-                    "exit_or_rotate_candidates": {"type": "array", "items": {"type": "string"}},
-                },
-                "additionalProperties": True,
+                "properties": portfolio_summary_properties,
+                "additionalProperties": False,
             },
             "stocks": {
                 "type": "array",
@@ -336,7 +408,7 @@ def get_output_schema_for_mode(mode: AiReviewMode) -> dict[str, Any]:
                     "type": "object",
                     "properties": stock_properties,
                     "required": required,
-                    "additionalProperties": True,
+                    "additionalProperties": False,
                 },
             },
             "action_plan": {"type": "array", "items": {"type": "string"}},
@@ -366,7 +438,7 @@ def get_output_schema_for_mode(mode: AiReviewMode) -> dict[str, Any]:
             "warnings",
             "raw_model_output",
         ],
-        "additionalProperties": True,
+        "additionalProperties": False,
     }
 
 

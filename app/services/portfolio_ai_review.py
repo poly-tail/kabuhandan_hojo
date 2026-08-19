@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.core.config import REPO_ROOT, get_settings
@@ -29,6 +30,7 @@ from app.schemas.portfolio_ai import (
     LongTermCarryMonitoringIntervalView,
     PortfolioAiCandidate,
     PortfolioAiHolding,
+    ParseFailureKind,
     PortfolioAiReviewError,
     PortfolioAiReviewRequest,
     PortfolioAiReviewResponse,
@@ -213,6 +215,30 @@ STOCK_REVIEW_JSON_SCHEMA: dict[str, Any] = {
 
 # Keep the legacy exported schema aligned with the active Prompt Builder schema.
 STOCK_REVIEW_JSON_SCHEMA = get_output_schema_for_mode("judge")
+
+
+class AiReviewOutputError(ValueError):
+    """Base class for sanitized model-output parsing failures."""
+
+    failure_kind: ParseFailureKind
+
+
+class AiReviewJsonDecodeError(AiReviewOutputError):
+    """The provider response was not a JSON object."""
+
+    failure_kind = "json_syntax"
+
+
+class AiReviewRootShapeError(AiReviewOutputError):
+    """The provider returned JSON with an unsupported root shape."""
+
+    failure_kind = "root_shape"
+
+
+class AiReviewSchemaValidationError(AiReviewOutputError):
+    """The provider returned JSON that did not match the application contract."""
+
+    failure_kind = "schema_validation"
 
 
 class PortfolioAiReviewService:
@@ -662,9 +688,20 @@ class PortfolioAiReviewService:
         usage = self._with_minimum_api_calls(usage)
         self._record_provider_usage(model=model, usage=usage)
 
+        raw_fallback = False
         try:
             response = self.parse_ai_review_result(raw_output, options=options)
-        except ValueError:
+        except AiReviewOutputError as parse_error:
+            parse_failure_kind = parse_error.failure_kind
+            parse_failure_message = (
+                "OpenAI応答のJSON項目形式がアプリ仕様と一致しませんでした。"
+                if parse_failure_kind == "schema_validation"
+                else (
+                    "OpenAI応答のJSONルート形式がアプリ仕様と一致しませんでした。"
+                    if parse_failure_kind == "root_shape"
+                    else "OpenAI応答のJSON構文を解析できませんでした。"
+                )
+            )
             if len(raw_output.strip()) >= 200:
                 try:
                     repaired_output, repair_usage = self._repair_model_output_json(
@@ -680,11 +717,16 @@ class PortfolioAiReviewService:
                     response = self.parse_ai_review_result(repaired_output, options=options)
                     warnings.extend(
                         [
-                            "OpenAI応答がJSONとして解析できなかったため、Web検索を追加しないJSON整形リトライを実行しました。",
+                            f"{parse_failure_message} Web検索を追加しないJSON整形リトライを実行しました。",
                             "整形リトライ結果です。重要判断はsourcesと検証ラベルを確認してください。",
                         ]
                     )
-                except Exception:
+                except Exception as repair_error:
+                    logger.warning(
+                        "OpenAI stock review JSON repair failed: parse_kind=%s error_type=%s",
+                        parse_failure_kind,
+                        repair_error.__class__.__name__,
+                    )
                     if self._should_display_raw_fallback(raw_output):
                         response = self._raw_output_fallback_response(
                             raw_output=raw_output,
@@ -700,11 +742,13 @@ class PortfolioAiReviewService:
                             estimated_cost_usd=estimated_cost_usd,
                             warnings=[
                                 *warnings,
-                                "OpenAI応答をJSONとして解析できず、JSON整形リトライにも失敗しました。生応答をそのまま表示します。",
+                                f"{parse_failure_message} JSON整形リトライにも失敗しました。生応答をそのまま表示します。",
                             ],
                             request_payload=request_payload,
                             usage=usage,
+                            failure_kind=parse_failure_kind,
                         )
+                        raw_fallback = True
                     else:
                         return self._error_response(
                             status="json_parse_failed",
@@ -722,6 +766,7 @@ class PortfolioAiReviewService:
                             request_payload=request_payload,
                             raw_model_output=raw_output,
                             usage=usage,
+                            parse_failure_kind=parse_failure_kind,
                         )
             else:
                 if self._should_display_raw_fallback(raw_output):
@@ -739,11 +784,13 @@ class PortfolioAiReviewService:
                         estimated_cost_usd=estimated_cost_usd,
                         warnings=[
                             *warnings,
-                            "OpenAI応答をJSONとして解析できませんでした。生応答をそのまま表示します。",
+                            f"{parse_failure_message} 生応答をそのまま表示します。",
                         ],
                         request_payload=request_payload,
                         usage=usage,
+                        failure_kind=parse_failure_kind,
                     )
+                    raw_fallback = True
                 else:
                     return self._error_response(
                         status="json_parse_failed",
@@ -761,10 +808,12 @@ class PortfolioAiReviewService:
                         request_payload=request_payload,
                         raw_model_output=raw_output,
                         usage=usage,
+                        parse_failure_kind=parse_failure_kind,
                     )
 
-        response.status = "success"
-        response.error = None
+        if not raw_fallback:
+            response.status = "success"
+            response.error = None
         response.mode = options.mode
         response.analysis_mode = options.analysis_mode
         response.holdings_source = holdings_source
@@ -778,19 +827,25 @@ class PortfolioAiReviewService:
         response.actual_usage = usage
         if not response.raw_model_output:
             response.raw_model_output = None
-        validation_warnings = validate_stock_analysis_response(
-            response.model_dump(mode="json"),
-            options.mode,
+        validation_warnings = (
+            []
+            if raw_fallback
+            else validate_stock_analysis_response(
+                response.model_dump(mode="json"),
+                options.mode,
+            )
         )
         response.warnings = [*warnings, *validation_warnings, *response.warnings]
         response.holdings_snapshot = holdings
         response.candidates_snapshot = candidates
         response.market_snapshot = market_snapshots
         response.request_payload = request_payload
-        self._increment_daily_usage()
+        if not raw_fallback:
+            self._increment_daily_usage()
         if options.save_result:
             self.save_ai_review_result(response)
-            self._save_cached_response(cache_key, response)
+            if not raw_fallback:
+                self._save_cached_response(cache_key, response)
         return response
 
     def call_open_ai_for_stock_review(
@@ -824,15 +879,47 @@ class PortfolioAiReviewService:
     ) -> PortfolioAiReviewResponse:
         """Parse and validate JSON returned by the model."""
 
-        text = self._extract_json_text(self._strip_json_fence(raw_output))
+        stripped = self._strip_json_fence(raw_output)
         try:
-            payload = json.loads(text)
-        except json.JSONDecodeError as exc:
-            raise ValueError("model output was not valid JSON") from exc
+            payload = json.loads(stripped)
+        except json.JSONDecodeError as direct_exc:
+            text = self._extract_json_text(stripped)
+            if text == stripped:
+                raise AiReviewJsonDecodeError("model output was not valid JSON") from direct_exc
+            try:
+                payload = json.loads(text)
+            except json.JSONDecodeError as extracted_exc:
+                raise AiReviewJsonDecodeError("model output was not valid JSON") from extracted_exc
         if not isinstance(payload, dict):
-            raise ValueError("model output root was not an object")
-        normalized = self._normalize_model_payload(payload, options=options)
-        return PortfolioAiReviewResponse.model_validate(normalized)
+            raise AiReviewRootShapeError("model output root was not an object")
+        schema_mode = options.mode if options is not None else payload.get("mode")
+        if schema_mode not in {"scanner", "analyst", "judge", "critical", "prompt_only"}:
+            raise AiReviewSchemaValidationError("model output mode was invalid")
+        allowed_root_fields = set(get_output_schema_for_mode(schema_mode)["properties"])
+        if set(payload).difference(allowed_root_fields):
+            raise AiReviewSchemaValidationError("model output contained unsupported root fields")
+        required_fields = {
+            "generated_at",
+            "mode",
+            "portfolio_summary",
+            "stocks",
+            "sources",
+            "warnings",
+            "raw_model_output",
+        }
+        if required_fields.difference(payload):
+            raise AiReviewSchemaValidationError("model output was missing required fields")
+        for field in ("input_summary", "market_summary", "portfolio_summary"):
+            if field in payload and not isinstance(payload[field], dict):
+                raise AiReviewSchemaValidationError(f"model output field {field!r} was not an object")
+        for field in ("stocks", "action_plan", "critical_warnings", "sources", "warnings"):
+            if field in payload and not isinstance(payload[field], list):
+                raise AiReviewSchemaValidationError(f"model output field {field!r} was not an array")
+        try:
+            normalized = self._normalize_model_payload(payload, options=options)
+            return PortfolioAiReviewResponse.model_validate(normalized)
+        except (TypeError, ValueError, ValidationError) as exc:
+            raise AiReviewSchemaValidationError("model output did not match the response schema") from exc
 
     def save_ai_review_result(self, response: PortfolioAiReviewResponse) -> None:
         """Append AI analysis result to local JSON history."""
@@ -1374,7 +1461,17 @@ class PortfolioAiReviewService:
         warnings: list[str],
         request_payload: dict[str, Any],
         usage: PortfolioAiUsage,
+        failure_kind: ParseFailureKind = "json_syntax",
     ) -> PortfolioAiReviewResponse:
+        if failure_kind == "schema_validation":
+            failure_summary = "OpenAI応答は有効なJSONでしたが、項目形式がアプリ仕様と一致しませんでした。"
+            failure_detail = "項目形式が一致しないため、カード項目への分解は未実行です。"
+        elif failure_kind == "root_shape":
+            failure_summary = "OpenAI応答は有効なJSONでしたが、ルート形式がアプリ仕様と一致しませんでした。"
+            failure_detail = "JSONルート形式が一致しないため、カード項目への分解は未実行です。"
+        else:
+            failure_summary = "OpenAI応答は返りましたが、JSON構文を解析できませんでした。"
+            failure_detail = "JSON構文を解析できないため、カード項目への分解は未実行です。"
         stocks: list[PortfolioAiStockAnalysis] = []
         for holding in holdings:
             stocks.append(
@@ -1384,8 +1481,8 @@ class PortfolioAiReviewService:
                     judgement="watch",
                     judgement_label=JUDGEMENT_LABELS["watch"],
                     confidence=0,
-                    short_reason="OpenAI応答は返りましたが、JSON parseできませんでした。下のOpenAI生応答を確認してください。",
-                    key_risks=["構造化JSONではないため、カード項目への分解は未実行です。"],
+                    short_reason=f"{failure_summary} 下のOpenAI生応答を確認してください。",
+                    key_risks=[failure_detail],
                     verification_labels=["【U】"],
                 )
             )
@@ -1397,8 +1494,8 @@ class PortfolioAiReviewService:
                     judgement="watch",
                     judgement_label=JUDGEMENT_LABELS["watch"],
                     confidence=0,
-                    short_reason="OpenAI応答は返りましたが、JSON parseできませんでした。下のOpenAI生応答を確認してください。",
-                    key_risks=["構造化JSONではないため、カード項目への分解は未実行です。"],
+                    short_reason=f"{failure_summary} 下のOpenAI生応答を確認してください。",
+                    key_risks=[failure_detail],
                     verification_labels=["【U】"],
                 )
             )
@@ -1420,17 +1517,19 @@ class PortfolioAiReviewService:
             },
             market_summary={"structured_parse": "failed"},
             portfolio_summary=PortfolioAiSummary(
-                overall_view="OpenAI応答は返りましたが、JSONとして解析できませんでした。生応答をそのまま表示します。",
+                overall_view=f"{failure_summary} 生応答をそのまま表示します。",
                 portfolio_summary="カード分解は行わず、raw_model_outputを確認してください。再実行する場合はWeb検索回数を減らすか、軽量スキャン/個別詳細分析で対象を絞ってください。",
                 overall_risk="medium",
                 market_temperature="raw_output_fallback",
             ),
             stocks=stocks,
             action_plan=["OpenAI生応答を確認する", "必要なら対象銘柄を絞って再実行する"],
-            critical_warnings=["構造化JSONではないため、判断は生応答の内容とsourcesを手動確認してください。"],
+            critical_warnings=[f"{failure_detail} 判断は生応答の内容とsourcesを手動確認してください。"],
             warnings=warnings,
             raw_model_output=raw_output,
-            status="success",
+            parse_failure_kind=failure_kind,
+            status="json_parse_failed",
+            error=PortfolioAiReviewError(code="json_parse_failed", message=failure_summary),
             holdings_source=holdings_source,
             web_search_used=include_web_search,
             mock_response=False,
@@ -1465,6 +1564,7 @@ class PortfolioAiReviewService:
         request_payload: dict[str, Any] | None = None,
         raw_model_output: str | None = None,
         usage: PortfolioAiUsage | None = None,
+        parse_failure_kind: ParseFailureKind | None = None,
     ) -> PortfolioAiReviewResponse:
         return PortfolioAiReviewResponse(
             generated_at=self._tokyo_now(),
@@ -1490,6 +1590,7 @@ class PortfolioAiReviewService:
             stocks=[],
             warnings=warnings or [],
             raw_model_output=raw_model_output,
+            parse_failure_kind=parse_failure_kind,
             status=status,  # type: ignore[arg-type]
             error=PortfolioAiReviewError(code=status, message=message),  # type: ignore[arg-type]
             holdings_source=holdings_source,
@@ -1535,8 +1636,29 @@ class PortfolioAiReviewService:
         payload.setdefault("request_payload", {})
 
         summary = dict(payload.get("portfolio_summary") or {})
-        if "overall_view" not in summary and "summary" in summary:
-            summary["overall_view"] = summary["summary"]
+        for alias in (
+            "summary",
+            "summary_view",
+            "overall_assessment",
+            "allocation_view",
+            "concentration_comment",
+        ):
+            if alias in summary and not isinstance(summary[alias], str):
+                raise TypeError(f"portfolio summary alias {alias!r} was not a string")
+        summary_text = summary.pop("summary", None)
+        summary_view = summary.pop("summary_view", None)
+        overall_assessment = summary.pop("overall_assessment", None)
+        if not summary.get("overall_view"):
+            for alias_value in (summary_text, summary_view, overall_assessment):
+                if isinstance(alias_value, str) and alias_value:
+                    summary["overall_view"] = alias_value
+                    break
+        allocation_view = summary.pop("allocation_view", None)
+        if not summary.get("cash_allocation_view") and isinstance(allocation_view, str):
+            summary["cash_allocation_view"] = allocation_view
+        concentration_comment = summary.pop("concentration_comment", None)
+        if not summary.get("concentration_risk") and isinstance(concentration_comment, str):
+            summary["concentration_risk"] = concentration_comment
         summary.setdefault("overall_view", summary.get("portfolio_summary", ""))
         summary.setdefault("portfolio_summary", summary.get("overall_view", ""))
         payload["portfolio_summary"] = summary
@@ -1544,10 +1666,14 @@ class PortfolioAiReviewService:
         normalized_stocks: list[dict[str, Any]] = []
         for stock in payload.get("stocks") or []:
             if not isinstance(stock, dict):
-                continue
+                raise TypeError("stock analysis item was not an object")
             stock = dict(stock)
-            judgement = stock.get("judgement") or "watch"
-            stock["judgement"] = judgement if judgement in JUDGEMENT_LABELS else "watch"
+            if "judgement" in stock and not isinstance(stock["judgement"], str):
+                raise TypeError("stock judgement was not a string")
+            stock["judgement"] = self._normalize_judgement_code(
+                stock.get("judgement"),
+                stock.get("judgement_label"),
+            )
             stock.setdefault("judgement_label", JUDGEMENT_LABELS.get(stock["judgement"], "様子見"))
             stock.setdefault("confidence", 0)
             stock.setdefault("time_horizon_views", {})
@@ -1567,6 +1693,26 @@ class PortfolioAiReviewService:
             normalized_stocks.append(stock)
         payload["stocks"] = normalized_stocks
         return payload
+
+    @staticmethod
+    def _normalize_judgement_code(judgement: object, judgement_label: object) -> str:
+        if isinstance(judgement, str) and judgement in JUDGEMENT_LABELS:
+            return judgement
+        label = judgement_label if isinstance(judgement_label, str) else ""
+        text = f"{judgement if isinstance(judgement, str) else ''} {label}"
+        if "緊急" in text:
+            return "urgent_review"
+        if "新規" in text and any(marker in text for marker in ("回避", "見送", "避け")):
+            return "avoid_new_buy"
+        if "利確" in text:
+            return "take_profit_candidate"
+        if any(marker in text for marker in ("買い増", "買い候補")):
+            return "buy_more_candidate"
+        if any(marker in text for marker in ("縮小", "減ら", "撤退", "入替")):
+            return "reduce_risk"
+        if any(marker in text for marker in ("保有", "継続", "コア")):
+            return "hold"
+        return "watch"
 
     def _system_prompt(self, mode: AiReviewMode) -> str:
         return (
@@ -1692,11 +1838,16 @@ class PortfolioAiReviewService:
         if not isinstance(cached, dict):
             return None
         try:
-            return PortfolioAiReviewResponse.model_validate(cached)
+            response = PortfolioAiReviewResponse.model_validate(cached)
         except Exception:
             return None
+        if response.status != "success" or response.raw_model_output is not None:
+            return None
+        return response
 
     def _save_cached_response(self, cache_key: str, response: PortfolioAiReviewResponse) -> None:
+        if response.status != "success" or response.raw_model_output is not None:
+            return
         cache = self._read_json_object(AI_REVIEW_CACHE_PATH)
         cache[cache_key] = response.model_dump(mode="json")
         if len(cache) > 50:

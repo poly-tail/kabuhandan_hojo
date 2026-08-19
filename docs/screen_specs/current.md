@@ -1,6 +1,6 @@
 # Screen Spec Current
 
-> 現在の正本: `screen_spec_v2.2.md`
+> 現在の正本: `screen_spec_v2.3.md`
 
 ## 概要
 
@@ -9,9 +9,9 @@
 
 ## 現在値
 
-- 画面仕様書: v2.2
-- 更新日: 2026-08-18
-- 変更概要: dashboardの`東証全銘柄を同期`、4,000件/5%縮小・legacy/FK保護、完全/未確認status、情報基準日・同期時刻・各件数feedbackを追加
+- 画面仕様書: v2.3
+- 更新日: 2026-08-19
+- 変更概要: dashboard legacy軽量スキャンの`json_parse_failed`赤表示、JSON構文・root形式・項目形式の分類label、成功回数非加算・cache不可・履歴保存可の表示契約を追加
 
 ## 主な変更点
 
@@ -25,6 +25,9 @@
 - 取得、新規、更新、再有効化、無効化countのsuccess feedbackと、seed fallbackを全件成功表示しない境界
 - BYOK/private local/full dataset非同梱・非再配布、地方取引所単独銘柄を保証しない表示範囲
 - dashboard legacy AI usage panelと利用者向けholdings-source label
+- `json_parse_failed`を成功表示しない赤いerror cardと、`json_syntax` / `root_shape` / `schema_validation`の利用者向けlabel
+- raw output救済を成功回数とcacheへ含めず、調査用historyと生応答表示を維持する境界
+- scannerは軽量生成schemaを使い、runtimeの空値・既定値を確認済みの詳細分析として強調しないこと
 - chart detail 強化
 - live mode の no-mock 表示
 - market proxy ベースの地合い表示

@@ -14,6 +14,8 @@ from app.schemas.portfolio_ai import (
     PortfolioAiCandidate,
     PortfolioAiHolding,
     PortfolioAiReviewRequest,
+    PortfolioAiStockAnalysis,
+    PortfolioAiSummary,
     PortfolioMarketSnapshot,
 )
 
@@ -150,10 +152,45 @@ def test_output_schema_includes_long_term_carry_check_without_event_conflict() -
 def test_scanner_schema_uses_simplified_non_monitoring_fields() -> None:
     scanner_schema = get_output_schema_for_mode("scanner")
     stock_schema = scanner_schema["properties"]["stocks"]["items"]
+    summary_schema = scanner_schema["properties"]["portfolio_summary"]
 
     assert "non_monitoring_hold_risk" in stock_schema["required"]
     assert "needs_long_term_carry_check" in stock_schema["required"]
     assert "long_term_carry_check" not in stock_schema["required"]
+    assert "long_term_carry_check" not in stock_schema["properties"]
+    assert stock_schema["properties"]["judgement"]["enum"] == [
+        "hold",
+        "buy_more_candidate",
+        "take_profit_candidate",
+        "reduce_risk",
+        "watch",
+        "avoid_new_buy",
+        "urgent_review",
+    ]
+    assert len(stock_schema["properties"]) < 30
+    assert "concentration_risk" in summary_schema["properties"]
+    assert "concentration_comment" not in summary_schema["properties"]
+    assert summary_schema["additionalProperties"] is False
+    assert stock_schema["additionalProperties"] is False
+    assert scanner_schema["additionalProperties"] is False
+
+
+def test_output_schema_fields_never_exceed_runtime_model_fields() -> None:
+    stock_model_fields = set(PortfolioAiStockAnalysis.model_fields)
+    summary_model_fields = set(PortfolioAiSummary.model_fields)
+
+    for mode in ("scanner", "analyst", "judge", "critical"):
+        schema = get_output_schema_for_mode(mode)  # type: ignore[arg-type]
+        stock_schema = schema["properties"]["stocks"]["items"]
+        summary_schema = schema["properties"]["portfolio_summary"]
+        stock_fields = set(stock_schema["properties"])
+        summary_fields = set(summary_schema["properties"])
+
+        assert set(stock_schema["required"]) <= stock_fields <= stock_model_fields
+        assert summary_fields <= summary_model_fields
+        if mode != "scanner":
+            assert stock_fields == stock_model_fields
+            assert summary_fields == summary_model_fields
 
 
 def test_preflight_estimate_includes_configured_web_search_call_fee() -> None:

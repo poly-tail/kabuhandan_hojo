@@ -1,6 +1,6 @@
 # API Spec Current
 
-> 現在の正本: `api_spec_v2.0.md`
+> 現在の正本: `api_spec_v2.1.md`
 
 ## 概要
 
@@ -9,9 +9,9 @@
 
 ## 現在値
 
-- API仕様書: v2.0
-- 更新日: 2026-08-18
-- 変更概要: `GET /securities/master/status`と、4,000件/5%縮小guard・明示legacy採用・参照identity保護を持つJ-Quants current/historical master sync、provenance/count contractを追加
+- API仕様書: v2.1
+- 更新日: 2026-08-19
+- 変更概要: legacy軽量スキャンのsummary alias正規化、schema/runtime一致、scanner schema縮小、parse失敗3分類、raw output救済のquota/cache/history契約を追加
 
 ## 主な変更点
 
@@ -27,6 +27,9 @@
 - ordinary/preferred/alphanumeric code保持、source/listing date分離、pagination guard、bounded 429 retry
 - BYOK/private local/full dataset非同梱・非再配布、東証listed-issue scope、地方取引所単独銘柄非保証
 - legacy stock-reviewの`review_runs`とprovider `api_calls`を分離したusage API契約
+- `concentration_comment` / `summary_view`のcanonical正規化、Pydantic model以内のmode別schema、主要objectの`additionalProperties=false`
+- scanner stock 30項目未満、`judgement` 7値enum、free-text judgementのcanonical code化
+- `parse_failure_kind=json_syntax|root_shape|schema_validation`と、`status=json_parse_failed` raw output救済の成功回数非加算・cache禁止・履歴保存可
 - `openai-standard-2026-08-17`によるtoken/Web検索概算と`unpriced_api_calls`
 - live mode の no-mock 方針
 - J-Quants market proxy を使う市場地合い表示

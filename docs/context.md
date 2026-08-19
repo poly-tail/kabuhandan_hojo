@@ -1,5 +1,13 @@
 # Context
 
+## 2026-08-19 legacy軽量スキャン構造化response addendum
+
+- `POST /api/ai/stock-review`のscannerでは、valid JSONの`portfolio_summary.concentration_comment` / `summary_view`をcanonical fieldへ正規化してからPydantic検証します。canonical値が既にあればaliasで上書きしません。
+- mode別JSON Schemaはruntime Pydantic modelのfield以内とし、top-level、portfolio summary、stock itemを`additionalProperties=false`にします。scanner stockは30項目未満の軽量schema、`judgement`は7つのcanonical code enumです。
+- parse失敗は`json_syntax` / `root_shape` / `schema_validation`へ分類します。repair後も構造化できないraw output救済は`status=json_parse_failed`を維持し、成功`review_runs`へ加算せずcacheしません。`save_result=true`なら調査用historyへ保存できます。
+- dashboardは3分類を赤いerror cardで表示します。provider responseとrepairのusageは失敗時も`api_calls`へ記録されるため、成功回数0でもOpenAI呼出と概算費用は発生し得ます。
+- canonical個別銘柄AI、J-Quants master、検索・Portfolioの契約は変更しません。
+
 ## 2026-08-18 東証/J-Quants銘柄マスター同期 addendum
 
 - dashboardの`東証全銘柄を同期`は、利用者自身の`JQUANTS_API_KEY`でJ-Quants上場銘柄masterを取得し、git管理外のprivate local DBへ保存します。完全なprovider datasetをpublic repositoryへ同梱・再配布しません。

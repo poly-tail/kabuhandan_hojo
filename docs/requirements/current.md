@@ -1,6 +1,6 @@
 # Requirements Current
 
-> 現在の正本: `requirements_v1.7.md`
+> 現在の正本: `requirements_v1.8.md`
 
 ## 概要
 
@@ -9,9 +9,9 @@
 
 ## 現在値
 
-- 要件仕様書: v1.7
-- 更新日: 2026-08-18
-- 変更概要: BYOKによる東証/J-Quants listed issueのprivate local full sync、4,000件/5%縮小guard、明示legacy採用、参照identity保護、provenance・count・historical保護を追加
+- 要件仕様書: v1.8
+- 更新日: 2026-08-19
+- 変更概要: legacy軽量スキャンのalias正規化、JSON Schema/Pydantic一致、scanner schema縮小、parse失敗3分類、raw output救済の成功quota非加算・cache禁止・履歴保存可を追加
 
 ## 主な内容
 
@@ -31,6 +31,10 @@
 - 銘柄検索はDB-onlyで、provider bodyをbrowser errorへ出さず、CLI dry-runの先行DB初期化副作用を明記すること
 - `source_as_of`と同期時刻、取得/新規/更新/再有効化/無効化、ローカル/J-Quants有効件数を区別すること
 - 36件seedはinsert-onlyの限定fallbackで、full masterまたは全件同期成功として扱わないこと
+- valid JSONの`concentration_comment` / `summary_view`をcanonical fieldへ正規化し、schema fieldをruntime Pydantic model以内に保つこと
+- scanner outputを30項目未満へ絞り、`judgement`を7つのcanonical code enumへ制限すること
+- legacy parse失敗を`json_syntax` / `root_shape` / `schema_validation`へ分類し、schema mismatchを構文エラーと誤表示しないこと
+- raw output救済は`status=json_parse_failed`を維持し、成功回数へ加算せずcacheしない一方、調査用historyへ保存できること
 - legacy日次上限の1回を、銘柄数ではなく正常完了した一括review 1件と定義すること
 - provider API call、token、実Web検索、未算定callをreview quotaと分離してJST日次・月次集計すること
 - 概算額は正式請求ではなく、OpenAI PlatformのUsage Dashboardを正本とすること

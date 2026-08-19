@@ -1215,6 +1215,14 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
         daily_limit_exceeded: "日次上限",
       }[status] || status || "未実行");
 
+      const aiReviewResultStatusLabel = (data) => {
+        const status = data?.status || "idle";
+        if (status !== "json_parse_failed") return aiReviewStatusLabel(status);
+        if (data?.parse_failure_kind === "schema_validation") return "JSON項目形式エラー";
+        if (data?.parse_failure_kind === "root_shape") return "JSONルート形式エラー";
+        return "JSON構文エラー";
+      };
+
       const aiJudgementLabel = (judgement) => ({
         hold: "保有継続",
         buy_more_candidate: "買増し候補",
@@ -1582,7 +1590,7 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
               ? "success"
               : "";
           feedback.className = tone ? `search-feedback ${tone}` : "search-feedback";
-          feedback.textContent = aiReviewStatusLabel(review.status);
+          feedback.textContent = aiReviewResultStatusLabel(review.data || { status: review.status });
         }
 
         if (review.status === "idle") {
@@ -1613,7 +1621,7 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
           fill("portfolio-ai-review-results", `
             <article class="ai-review-card error">
               <div class="meta">
-                <strong>${escapeHtml(aiReviewStatusLabel(status))}</strong>
+                <strong>${escapeHtml(aiReviewResultStatusLabel(data))}</strong>
                 <span class="chip warn">${escapeHtml(aiHoldingsSourceLabel(data.holdings_source))}</span>
               </div>
               <p>${escapeHtml(data.error?.message || data.portfolio_summary?.overall_view || "分析できませんでした。")}</p>
@@ -1803,7 +1811,7 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
               ? "success"
               : "";
           feedback.className = tone ? `search-feedback ${tone}` : "search-feedback";
-          feedback.textContent = aiReviewStatusLabel(review.status);
+          feedback.textContent = aiReviewResultStatusLabel(review.data || { status: review.status });
         }
 
         if (review.status === "idle") {
@@ -1832,7 +1840,7 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
           fill("watchlist-ai-review-results", `
             <article class="ai-review-card error">
               <div class="meta">
-                <strong>${escapeHtml(aiReviewStatusLabel(status))}</strong>
+                <strong>${escapeHtml(aiReviewResultStatusLabel(data))}</strong>
                 <span class="chip warn">${escapeHtml(aiHoldingsSourceLabel(data.holdings_source))}</span>
               </div>
               <p>${escapeHtml(data.error?.message || data.portfolio_summary?.overall_view || "分析できませんでした。")}</p>
