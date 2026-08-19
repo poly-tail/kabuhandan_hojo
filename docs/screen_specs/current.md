@@ -1,6 +1,6 @@
 # Screen Spec Current
 
-> 現在の正本: `screen_spec_v2.3.md`
+> 現在の正本: `screen_spec_v2.4.md`
 
 ## 概要
 
@@ -9,9 +9,9 @@
 
 ## 現在値
 
-- 画面仕様書: v2.3
+- 画面仕様書: v2.4
 - 更新日: 2026-08-19
-- 変更概要: dashboard legacy軽量スキャンの`json_parse_failed`赤表示、JSON構文・root形式・項目形式の分類label、成功回数非加算・cache不可・履歴保存可の表示契約を追加
+- 変更概要: legacy AI stock cardとsummaryの銘柄名・公開code併記、local master canonical identity、unknown名称label、live/mock/cache共通表示を追加
 
 ## 主な変更点
 
@@ -28,6 +28,10 @@
 - `json_parse_failed`を成功表示しない赤いerror cardと、`json_syntax` / `root_shape` / `schema_validation`の利用者向けlabel
 - raw output救済を成功回数とcacheへ含めず、調査用historyと生応答表示を維持する境界
 - scannerは軽量生成schemaを使い、runtimeの空値・既定値を確認済みの詳細分析として強調しないこと
+- legacy Portfolio / Watchlist stock cardは銘柄名と公開codeを併記し、`285A0`を`285A`として表示できること
+- legacy summaryの6つの銘柄参照listを「銘柄名（公開コード）」で表示し、unknown codeを`名称未登録（code）`とすること
+- local masterへ一致したtargetはcanonical tickerへ揃い、live/mock/cache hitで同じ表示を使うこと
+- 添付v2026.08.16は参照資料として扱い、canonical個別銘柄AI v2026.08.18を変更しないこと
 - chart detail 強化
 - live mode の no-mock 表示
 - market proxy ベースの地合い表示

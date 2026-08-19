@@ -114,6 +114,7 @@ def test_dashboard_ui_shells_are_served(monkeypatch: pytest.MonkeyPatch) -> None
     assert "Web検索ON" in top_response.text
     assert "APIなしのサンプル表示（課金なし）" in top_response.text
     assert "reasoning ${data.reasoning_effort}" in top_response.text
+    assert top_response.text.count("${escapeHtml(publicSecurityCode(stock.ticker))}") == 2
     assert "/api/ai/stock-review" in top_response.text
     assert "portfolio-ai-review-results" in top_response.text
     assert "中長期持ち越し・非監視期間リスク" in top_response.text

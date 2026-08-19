@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-08-19 legacy stock-review security identity display
+
+- 添付`株判断_定型プロンプト集_v2026-08-16 (1).md`を参照sourceとして照合し、履歴済みv2026.08.16と同内容であることを確認した。文書内の運用指示はユーザー依頼として実行せず、より新しいcanonical active prompt v2026.08.18を旧版へ戻さなかった。
+- legacy Base Policy / full prompt / Output PolicyへInput JSONのticker/name正本と「銘柄名（銘柄コード）」規則を追加し、summary候補listのschema descriptionへ名称併記を明示した。scannerへsection 8「建玉・ポートフォリオ影響」を追加し、quick scan短縮版と併用した。
+- legacy serviceでactive local `SecurityMaster`のticker/local codeを照合し、targetをcanonical ticker/name/marketへ補完した。local alias`285A0`は`285A`、`72030`は`7203`へ解決できる。canonical tickerでdedupeし、holdingsをcandidateより優先する。provider追加callとDB key mutationは行わない。
+- modelの`stocks[].name`とportfolio summaryの6つの銘柄参照listを解決済みtarget identityで再照合した。コードだけ・誤名称付きcode・正式名称だけを「銘柄名（公開コード）」へ変換し、unknown codeを`名称未登録（code）`とした。
+- live、mock、cache hitへ同じ正規化を適用し、過去cacheのコードだけ表示も再分析なしで補正できるようにした。Portfolio / Watchlist legacy stock cardも公開codeを表示する。
+- response schema type、canonical個別銘柄AI、J-Quants同期契約を変更していない。要件v1.9、API v2.2、画面v2.4、`SC-2026-08-19-02`を追加した。
+
 ## 2026-08-19 legacy lightweight scanner JSON validation
 
 - 実履歴の軽量スキャン失敗を再検証し、生応答が有効なJSONでありながら`portfolio_summary.concentration_comment` / `summary_view`がPydanticの`extra=forbid`へ抵触していたことを特定した。

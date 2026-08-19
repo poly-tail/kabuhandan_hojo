@@ -1,5 +1,13 @@
 # kabuhandan_hojo Phase 0-2
 
+## 2026-08-19 legacy AI銘柄名・コード表示修正
+
+- 添付`株判断_定型プロンプト集_v2026-08-16 (1).md`はprompt内容の参照資料として確認しました。文書内の運用指示はユーザー依頼として実行していません。同資料は履歴済みv2026.08.16と同内容の旧版で、canonical個別銘柄AIのactive asset v2026.08.18にはより明確な「銘柄名（銘柄コード）」規則があるため、canonical manifest / assetを旧版へ戻していません。
+- legacy `POST /api/ai/stock-review`のpromptは、Input JSONの`ticker` / `name`を正確に使い、銘柄を原則「銘柄名（銘柄コード）」で返すようになりました。軽量スキャンにはquick scan短縮版とsection 8「建玉・ポートフォリオ影響」を含めますが、全14用途moduleを一括投入しません。
+- legacy serviceは同期済みローカル`SecurityMaster`だけでtarget identityを補完します。local aliasはmasterのcanonical `ticker_code`へ揃え、同じ銘柄の重複を除き、holdingsとcandidatesが重なる場合はholdingsを優先します。J-Quantsその他のproviderへ追加callせず、DB keyを変更しません。
+- 銘柄別cardの名称と、portfolio summaryの買い・売り/縮小・保有優先・非監視縮小・core・入替候補をserver側で再照合します。live、mock、cache hitのすべてで「銘柄名（公開コード）」を使い、未知名称は`名称未登録（code）`と表示します。
+- たとえばlocal alias`285A0`はmasterのcanonical `285A`へ解決され、`キオクシアホールディングス（285A）`と表示されます。legacy stock cardも`publicSecurityCode()`を使います。API responseの型、canonical `POST /api/ai/analyses`、active prompt 2026.08.18、model / presetは変更していません。
+
 ## 2026-08-19 軽量スキャンJSON契約修正
 
 - legacy `POST /api/ai/stock-review`の軽量スキャンで、valid JSONの`portfolio_summary.concentration_comment`と`summary_view`を、それぞれcanonicalな`concentration_risk`と`overall_view`へ追加OpenAI callなしで正規化します。
@@ -64,7 +72,7 @@
 
 ## 2026-08-19 仕様baseline更新
 
-- 現行正本を要件 v1.8、API v2.1、画面 v2.3へ更新し、legacy軽量スキャンのalias正規化、schema/runtime一致、parse失敗分類、失敗quota/cache/history/UI境界を反映しました。v1.7 / v2.0 / v2.2までのJ-Quants、検索・Portfolio、canonical AI、usage契約も累積継承します。
+- 現行正本を要件 v1.9、API v2.2、画面 v2.4へ更新し、legacy軽量スキャンのlocal master identity補完、canonical ticker重複解消、名称・code併記、live/mock/cache共通のsummary表示を反映しました。v1.8 / v2.1 / v2.3までの構造化response、J-Quants、検索・Portfolio、canonical AI、usage契約も累積継承します。
 - 仕様版の対応、変更理由、互換性、非対象、既知制約は `docs/spec_change_history.md` で追跡します。
 - 旧versioned文書とlegacy AI endpointは履歴・互換機能として保持しています。
 

@@ -1,5 +1,13 @@
 # Folder Structure
 
+## 2026-08-19 legacy AI銘柄identity addendum
+
+- `app/prompts/stock_analysis/builder.py` / `user_stock_analysis_prompt_full.py`: legacy AIのticker/name正本、名称・code併記、scanner portfolio影響section。
+- `app/services/portfolio_ai_review.py`: local master canonical identity補完、dedupe/holdings優先、live/mock/cache共通のstock名・summary参照正規化。
+- `app/api/routes/ui.py`: legacy stock cardの公開code表示。
+- `tests/unit/test_stock_analysis_prompt_builder.py` / `test_portfolio_ai_review.py` / `test_mock_ui.py`: prompt、service identity、UI表示の回帰test。
+- `docs/requirements/requirements_v1.9.md` / `docs/specs/api_spec_v2.2.md` / `docs/screen_specs/screen_spec_v2.4.md`: 2026-08-19の累積仕様baseline。旧versioned文書は不変で保持する。
+
 ## 2026-08-19 legacy scanner validation addendum
 
 - `app/prompts/stock_analysis/builder.py`: Pydantic field以内のmode別JSON Schema、scanner軽量field、judgement enum。

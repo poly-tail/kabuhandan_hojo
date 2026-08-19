@@ -8,13 +8,16 @@ import hashlib
 import json
 import logging
 from pathlib import Path
+import re
 from typing import Any
 from zoneinfo import ZoneInfo
 
 from pydantic import ValidationError
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.core.config import REPO_ROOT, get_settings
+from app.models import SecurityMaster
 from app.prompts.stock_analysis import (
     build_prompt_only_text,
     build_stock_analysis_prompt,
@@ -72,6 +75,15 @@ MODE_LABELS = {
     "critical": "重要局面分析",
     "prompt_only": "ChatGPT投入用プロンプト生成",
 }
+
+SUMMARY_SECURITY_REFERENCE_FIELDS = (
+    "buy_candidates",
+    "sell_or_reduce_candidates",
+    "hold_priority",
+    "non_monitoring_reduce_candidates",
+    "core_position_candidates",
+    "exit_or_rotate_candidates",
+)
 
 STOCK_REVIEW_JSON_SCHEMA: dict[str, Any] = {
     "type": "object",
@@ -256,6 +268,17 @@ class PortfolioAiReviewService:
     ) -> PortfolioAiReviewResponse:
         holdings, holdings_source = self._resolve_holdings(payload, session=session)
         candidates = self._resolve_candidates(payload, session=session)
+        holdings = self._hydrate_holding_identities(holdings, session=session)
+        candidates = self._hydrate_candidate_identities(candidates, session=session)
+        holdings = list({holding.ticker: holding for holding in holdings}.values())
+        holding_tickers = {holding.ticker for holding in holdings}
+        candidates = list(
+            {
+                candidate.ticker: candidate
+                for candidate in candidates
+                if candidate.ticker not in holding_tickers
+            }.values()
+        )
         target_count = len(holdings) + len(candidates)
         settings = get_settings()
         max_stocks = settings.openai_max_stocks_per_request
@@ -569,6 +592,11 @@ class PortfolioAiReviewService:
                 warnings=mock_warnings,
                 request_payload={**request_payload, "include_web_search": False, "mock_forced_no_api": True},
             )
+            response = self._enrich_response_security_references(
+                response,
+                holdings=holdings,
+                candidates=candidates,
+            )
             if options.save_result:
                 self.save_ai_review_result(response)
             return response
@@ -594,6 +622,11 @@ class PortfolioAiReviewService:
                 estimated_cost_usd=estimated_cost_usd,
                 warnings=warnings,
                 request_payload=request_payload,
+            )
+            response = self._enrich_response_security_references(
+                response,
+                holdings=holdings,
+                candidates=candidates,
             )
             if options.save_result:
                 self.save_ai_review_result(response)
@@ -840,6 +873,11 @@ class PortfolioAiReviewService:
         response.candidates_snapshot = candidates
         response.market_snapshot = market_snapshots
         response.request_payload = request_payload
+        response = self._enrich_response_security_references(
+            response,
+            holdings=holdings,
+            candidates=candidates,
+        )
         if not raw_fallback:
             self._increment_daily_usage()
         if options.save_result:
@@ -967,6 +1005,97 @@ class PortfolioAiReviewService:
             selected = [candidate_lookup[ticker] for ticker in payload.tickers if ticker in candidate_lookup]
             return self._filter_candidate_tickers(selected, payload.tickers)
         return []
+
+    def _hydrate_holding_identities(
+        self,
+        holdings: list[PortfolioAiHolding],
+        *,
+        session: Session | None,
+    ) -> list[PortfolioAiHolding]:
+        """Replace placeholder names with authoritative local master identities."""
+
+        if session is None:
+            return holdings
+        hydrated: list[PortfolioAiHolding] = []
+        for holding in holdings:
+            security = self._find_security_master(session, holding.ticker)
+            if security is None:
+                hydrated.append(holding)
+                continue
+            hydrated.append(
+                holding.model_copy(
+                    update={
+                        "ticker": security.ticker_code,
+                        "name": security.name,
+                        "market": security.market or holding.market,
+                    }
+                )
+            )
+        return hydrated
+
+    def _hydrate_candidate_identities(
+        self,
+        candidates: list[PortfolioAiCandidate],
+        *,
+        session: Session | None,
+    ) -> list[PortfolioAiCandidate]:
+        """Resolve candidate names locally without making provider requests."""
+
+        if session is None:
+            return candidates
+        hydrated: list[PortfolioAiCandidate] = []
+        for candidate in candidates:
+            security = self._find_security_master(session, candidate.ticker)
+            if security is None:
+                hydrated.append(candidate)
+                continue
+            hydrated.append(
+                candidate.model_copy(
+                    update={
+                        "ticker": security.ticker_code,
+                        "name": security.name,
+                        "market": security.market or candidate.market,
+                    }
+                )
+            )
+        return hydrated
+
+    def _find_security_master(self, session: Session, ticker: str) -> SecurityMaster | None:
+        normalized = ticker.strip().upper()
+        aliases = self._security_code_aliases(normalized)
+        matches = session.scalars(
+            select(SecurityMaster).where(
+                SecurityMaster.is_active.is_(True),
+                or_(
+                    SecurityMaster.ticker_code.in_(aliases),
+                    SecurityMaster.local_code.in_(aliases),
+                ),
+            )
+        ).all()
+        if not matches:
+            return None
+
+        def rank(security: SecurityMaster) -> tuple[int, str]:
+            if security.ticker_code.upper() == normalized:
+                return (0, security.ticker_code)
+            if (security.local_code or "").upper() == normalized:
+                return (1, security.ticker_code)
+            return (2, security.ticker_code)
+
+        return min(matches, key=rank)
+
+    @staticmethod
+    def _security_code_aliases(ticker: str) -> tuple[str, ...]:
+        normalized = ticker.strip().upper()
+        aliases = [normalized]
+        if re.fullmatch(r"[0-9A-Z]{4}", normalized) and any(character.isalpha() for character in normalized):
+            aliases.append(f"{normalized}0")
+        if (
+            re.fullmatch(r"[0-9A-Z]{4}0", normalized)
+            and any(character.isalpha() for character in normalized[:4])
+        ):
+            aliases.append(normalized[:4])
+        return tuple(aliases)
 
     def _resolve_selected_tickers(self, tickers: list[str], *, session: Session | None) -> list[PortfolioAiHolding]:
         if not tickers:
@@ -1444,6 +1573,96 @@ class PortfolioAiReviewService:
             request_payload=request_payload,
         )
 
+    def _enrich_response_security_references(
+        self,
+        response: PortfolioAiReviewResponse,
+        *,
+        holdings: list[PortfolioAiHolding],
+        candidates: list[PortfolioAiCandidate],
+    ) -> PortfolioAiReviewResponse:
+        """Use request-side identities for model names and human-facing summary labels."""
+
+        identities: dict[str, tuple[str, str | None]] = {}
+        identities_by_name: dict[str, tuple[str, str]] = {}
+        for item in [*holdings, *candidates]:
+            ticker = item.ticker.strip().upper()
+            name = item.name.strip()
+            aliases = self._security_code_aliases(ticker)
+            trusted_name = None if not name or name.upper() in aliases else name
+            identity = (ticker, trusted_name)
+            for alias in aliases:
+                existing = identities.get(alias)
+                if existing is None or (existing[1] is None and trusted_name is not None):
+                    identities[alias] = identity
+            if trusted_name is not None:
+                identities_by_name.setdefault(trusted_name, (ticker, trusted_name))
+
+        for stock in response.stocks:
+            identity = self._find_response_identity(stock.ticker, identities)
+            if identity is not None:
+                stock.name = identity[1] or "名称未登録"
+
+        for field in SUMMARY_SECURITY_REFERENCE_FIELDS:
+            values = getattr(response.portfolio_summary, field)
+            setattr(
+                response.portfolio_summary,
+                field,
+                [
+                    self._format_security_reference(value, identities, identities_by_name)
+                    for value in values
+                ],
+            )
+        return response
+
+    def _format_security_reference(
+        self,
+        value: str,
+        identities: dict[str, tuple[str, str | None]],
+        identities_by_name: dict[str, tuple[str, str]],
+    ) -> str:
+        text = value.strip()
+        formatted_match = re.fullmatch(r"(.+?)[（(]([0-9A-Za-z]{4,10})[）)]", text)
+        if formatted_match is not None:
+            code = formatted_match.group(2)
+        elif re.fullmatch(r"(?=[0-9A-Za-z]*\d)[0-9A-Za-z]{4,10}", text):
+            code = text
+        else:
+            identity_by_name = identities_by_name.get(text)
+            if identity_by_name is None:
+                return value
+            ticker, name = identity_by_name
+            return f"{name}（{self._public_security_code(ticker)}）"
+
+        identity = self._find_response_identity(code, identities)
+        if identity is not None:
+            ticker, name = identity
+            return f"{name or '名称未登録'}（{self._public_security_code(ticker)}）"
+        if formatted_match is not None:
+            return value
+        return f"名称未登録（{self._public_security_code(code)}）"
+
+    def _find_response_identity(
+        self,
+        ticker: str,
+        identities: dict[str, tuple[str, str | None]],
+    ) -> tuple[str, str | None] | None:
+        normalized = ticker.strip().upper()
+        for alias in self._security_code_aliases(normalized):
+            identity = identities.get(alias)
+            if identity is not None:
+                return identity
+        return None
+
+    @staticmethod
+    def _public_security_code(ticker: str) -> str:
+        normalized = ticker.strip().upper()
+        if (
+            re.fullmatch(r"[0-9A-Z]{4}0", normalized)
+            and any(character.isalpha() for character in normalized[:4])
+        ):
+            return normalized[:4]
+        return normalized
+
     def _raw_output_fallback_response(
         self,
         *,
@@ -1843,7 +2062,11 @@ class PortfolioAiReviewService:
             return None
         if response.status != "success" or response.raw_model_output is not None:
             return None
-        return response
+        return self._enrich_response_security_references(
+            response,
+            holdings=response.holdings_snapshot,
+            candidates=response.candidates_snapshot,
+        )
 
     def _save_cached_response(self, cache_key: str, response: PortfolioAiReviewResponse) -> None:
         if response.status != "success" or response.raw_model_output is not None:

@@ -76,6 +76,7 @@ def test_prompt_only_uses_full_user_prompt() -> None:
     assert "【5.5. 中長期持ち越し・非監視期間リスク】" in manual_prompt
     assert "【14. 辛口チェック】" in manual_prompt
     assert "アプリ側入力データ" in manual_prompt
+    assert "銘柄名（銘柄コード）" in manual_prompt
 
 
 def test_scanner_prompt_includes_base_policy_and_light_sections() -> None:
@@ -173,6 +174,42 @@ def test_scanner_schema_uses_simplified_non_monitoring_fields() -> None:
     assert summary_schema["additionalProperties"] is False
     assert stock_schema["additionalProperties"] is False
     assert scanner_schema["additionalProperties"] is False
+
+
+def test_stock_review_prompt_requires_human_readable_security_identity() -> None:
+    request = PortfolioAiReviewRequest(mode="scanner", target="holdings", include_web_search=False)
+    bundle = build_stock_analysis_prompt(
+        request,
+        holdings=[
+            PortfolioAiHolding(
+                ticker="285A0",
+                name="キオクシアホールディングス",
+                market="プライム",
+                quantity=100,
+            )
+        ],
+        candidates=[],
+        market_snapshots=[],
+        news_snapshots={},
+        technical_snapshots={},
+        portfolio_snapshot={},
+    )
+
+    system_prompt = bundle["system_prompt"]
+    scanner_schema = bundle["output_schema"]
+    stock_properties = scanner_schema["properties"]["stocks"]["items"]["properties"]
+    summary_properties = scanner_schema["properties"]["portfolio_summary"]["properties"]
+
+    assert "銘柄名（銘柄コード）" in system_prompt
+    assert "コードだけにしない" in system_prompt
+    assert "【8. 建玉・ポートフォリオ影響】" in bundle["user_prompt"]
+    assert "【14. 辛口チェック 短縮版】" in bundle["user_prompt"]
+    assert "【4. 個別材料・ファンダメンタル】" not in bundle["user_prompt"]
+    assert "Input JSON の ticker" in stock_properties["ticker"]["description"]
+    assert "コードで代用しない" in stock_properties["name"]["description"]
+    assert "銘柄名（銘柄コード）" in summary_properties["core_position_candidates"]["items"]["description"]
+    assert bundle["prompt_payload"]["holdings"][0]["ticker"] == "285A0"
+    assert bundle["prompt_payload"]["holdings"][0]["name"] == "キオクシアホールディングス"
 
 
 def test_output_schema_fields_never_exceed_runtime_model_fields() -> None:

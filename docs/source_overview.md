@@ -1,5 +1,14 @@
 # Source Overview
 
+## 2026-08-19 legacy AI銘柄identity addendum
+
+- `app/prompts/stock_analysis/builder.py`はInput JSONのticker/name正本、「銘柄名（銘柄コード）」、`stocks[].ticker/name`転記、summary銘柄参照listの名称併記を生成契約へ追加する。scanner modeはsection 8「建玉・ポートフォリオ影響」とquick scan短縮版を含む。
+- `app/prompts/stock_analysis/user_stock_analysis_prompt_full.py`はprompt-onlyでも同じ名称・code併記規則を含む。添付v2026.08.16 duplicateは参照sourceであり、canonical `app/prompts/individual_security/`のactive v2026.08.18は変更しない。
+- `app/services/portfolio_ai_review.py`はactiveなlocal `SecurityMaster`のticker/local codeを照合し、targetをcanonical ticker/name/marketへ補完する。canonical tickerでdedupeし、holdingsをcandidateより優先する。provider追加callとDB key mutationは行わない。
+- 同serviceは`stocks[].name`とsummaryの6つの銘柄参照listを解決済みtarget identityで正規化し、live/mock/cache hitへ適用する。unknown codeは`名称未登録（code）`、英字末尾`0`は公開code表示となる。
+- `app/api/routes/ui.py`はPortfolio / Watchlistのlegacy stock cardに`publicSecurityCode(stock.ticker)`を使う。API schema typeは変更しない。
+- `tests/unit/test_stock_analysis_prompt_builder.py`と`tests/unit/test_portfolio_ai_review.py`はprompt section、schema description、master alias、dedupe、holdings優先、mock/cache/live正規化、unknown nameを固定する。`tests/unit/test_mock_ui.py`は公開code card表示を固定する。
+
 ## 2026-08-19 legacy scanner validation addendum
 
 - `app/prompts/stock_analysis/builder.py`はmode別output schemaをruntime model field以内へ揃え、主要objectを`additionalProperties=false`にします。scanner stock fieldを30項目未満へ絞り、`judgement`を7値enumにします。
@@ -31,8 +40,8 @@
 
 ## 2026-08-19 specification baseline addendum
 
-- `docs/requirements/requirements_v1.8.md`、`docs/specs/api_spec_v2.1.md`、`docs/screen_specs/screen_spec_v2.3.md`を現行仕様の正本とします。
-- `SC-2026-08-19-01`がlegacy軽量スキャンのschema/runtime整合、parse失敗分類、quota/cache/history/UI境界を追跡し、`SC-2026-08-18-02`以前と旧versioned文書は履歴として保持します。
+- `docs/requirements/requirements_v1.9.md`、`docs/specs/api_spec_v2.2.md`、`docs/screen_specs/screen_spec_v2.4.md`を現行仕様の正本とします。
+- `SC-2026-08-19-02`がlegacy stock-reviewのlocal master identity、dedupe/holdings優先、名称・code併記、live/mock/cache/UI表示を追跡します。`SC-2026-08-19-01`以前と旧versioned文書は履歴として保持します。
 
 ## 2026-08-17 specification baseline addendum
 

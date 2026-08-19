@@ -1,5 +1,17 @@
 # Source Call Graph
 
+## 2026-08-19 legacy AI銘柄identity正規化
+
+1. dashboard -> `POST /api/ai/stock-review` -> `PortfolioAiReviewService.review()` -> holdings / candidates / selected targetを解決
+2. DB sessionあり -> active `SecurityMaster.ticker_code` / `local_code`をlocal照合 -> masterのcanonical ticker/name/marketへ補完。`285A0 -> 285A`、`72030 -> 7203`等。J-Quantsその他のproviderは呼ばずDB keyも変更しない
+3. canonical tickerでholdingsとcandidatesをdedupe -> 同一銘柄が両方にあればholdingsを優先
+4. `build_stock_analysis_prompt()` -> Input JSONのticker/name正本 + 「銘柄名（銘柄コード）」 + scannerのsection 8 / quick scan短縮版 -> Responses APIまたはmock branch
+5. parse / validation -> 解決済みtarget identityで`stocks[].name`を再照合 -> summaryの6つの銘柄参照listを「銘柄名（公開コード）」へ正規化 -> unknown codeは`名称未登録（code）`
+6. live/mock response -> history/cache保存 -> route -> dashboard。cache hitはsnapshotから同じ再照合を行い、OpenAIを再呼び出さない
+7. Portfolio / Watchlist stock card -> `publicSecurityCode(stock.ticker)` -> 英字5文字末尾`0`だけ公開4文字表示。API schema typeは維持
+
+canonical `POST /api/ai/analyses`のactive prompt v2026.08.18、model、preset、plain `response.output_text`、保存契約はこのflowへ接続しません。添付v2026.08.16 duplicateは参照資料であり、canonical assetを置換しません。
+
 ## 2026-08-19 legacy軽量スキャンJSON検証
 
 1. dashboard `軽量スキャン` -> `POST /api/ai/stock-review` -> `PortfolioAiReviewService.review()` -> target / quota / cache判定

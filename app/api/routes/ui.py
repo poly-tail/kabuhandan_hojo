@@ -1650,7 +1650,7 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
             <div class="meta">
               <div>
                 <strong>${escapeHtml(stock.name)}</strong>
-                <div class="subtle">${escapeHtml(stock.ticker)}</div>
+                <div class="subtle">${escapeHtml(publicSecurityCode(stock.ticker))}</div>
               </div>
               <span class="judgement-badge ${escapeAttr(stock.judgement)}">${escapeHtml(stock.judgement_label || aiJudgementLabel(stock.judgement))}</span>
             </div>
@@ -1866,7 +1866,7 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
             <div class="meta">
               <div>
                 <strong>${escapeHtml(stock.name)}</strong>
-                <div class="subtle">${escapeHtml(stock.ticker)}</div>
+                <div class="subtle">${escapeHtml(publicSecurityCode(stock.ticker))}</div>
               </div>
               <span class="judgement-badge ${escapeAttr(stock.judgement)}">${escapeHtml(stock.judgement_label || aiJudgementLabel(stock.judgement))}</span>
             </div>

@@ -1,6 +1,6 @@
 # Requirements Current
 
-> 現在の正本: `requirements_v1.8.md`
+> 現在の正本: `requirements_v1.9.md`
 
 ## 概要
 
@@ -9,9 +9,9 @@
 
 ## 現在値
 
-- 要件仕様書: v1.8
+- 要件仕様書: v1.9
 - 更新日: 2026-08-19
-- 変更概要: legacy軽量スキャンのalias正規化、JSON Schema/Pydantic一致、scanner schema縮小、parse失敗3分類、raw output救済の成功quota非加算・cache禁止・履歴保存可を追加
+- 変更概要: legacy stock-reviewのlocal master銘柄identity補完、canonical ticker重複解消、promptの名称・code併記、live/mock/cache共通のstock名・summary銘柄参照正規化を追加
 
 ## 主な内容
 
@@ -35,6 +35,10 @@
 - scanner outputを30項目未満へ絞り、`judgement`を7つのcanonical code enumへ制限すること
 - legacy parse失敗を`json_syntax` / `root_shape` / `schema_validation`へ分類し、schema mismatchを構文エラーと誤表示しないこと
 - raw output救済は`status=json_parse_failed`を維持し、成功回数へ加算せずcacheしない一方、調査用historyへ保存できること
+- legacy promptはInput JSONのticker/nameを正確に使い、銘柄を原則「銘柄名（銘柄コード）」で表示すること
+- local masterに一致したlegacy targetをmasterのcanonical ticker/name/marketへ揃え、canonical tickerでdedupeし、holdingsをcandidateより優先すること
+- legacyの`stocks[].name`とsummaryの6つの銘柄参照listをlive/mock/cache共通で正規化し、unknown codeを`名称未登録（code）`とすること
+- legacy stock cardとsummaryで公開codeを使い、canonical prompt v2026.08.18を添付旧版へ戻さないこと
 - legacy日次上限の1回を、銘柄数ではなく正常完了した一括review 1件と定義すること
 - provider API call、token、実Web検索、未算定callをreview quotaと分離してJST日次・月次集計すること
 - 概算額は正式請求ではなく、OpenAI PlatformのUsage Dashboardを正本とすること

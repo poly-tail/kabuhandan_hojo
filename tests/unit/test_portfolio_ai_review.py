@@ -15,8 +15,13 @@ from sqlalchemy.pool import StaticPool
 from app.core.config import REPO_ROOT, get_settings
 from app.db.session import get_db, get_engine, get_session_factory
 from app.main import create_app
-from app.models import Base
-from app.schemas.portfolio_ai import PortfolioAiHolding, PortfolioAiReviewRequest, PortfolioAiUsage, PortfolioMarketSnapshot
+from app.models import Base, SecurityMaster
+from app.schemas.portfolio_ai import (
+    PortfolioAiHolding,
+    PortfolioAiReviewRequest,
+    PortfolioAiUsage,
+    PortfolioMarketSnapshot,
+)
 from app.services import ai_usage as ai_usage_module
 from app.services.monitoring_runtime import get_monitoring_container, get_monitoring_settings
 from app.services import portfolio_ai_review as portfolio_ai_review_module
@@ -214,6 +219,216 @@ def test_mock_target_never_calls_openai(monkeypatch: pytest.MonkeyPatch) -> None
     assert payload["portfolio_summary"]["non_monitoring_reduce_candidates"]
     assert payload["portfolio_summary"]["core_position_candidates"]
     assert payload["portfolio_summary"]["exit_or_rotate_candidates"]
+    assert all(
+        "（" in reference and "）" in reference
+        for field in (
+            "non_monitoring_reduce_candidates",
+            "core_position_candidates",
+            "exit_or_rotate_candidates",
+        )
+        for reference in payload["portfolio_summary"][field]
+    )
+    assert "三菱重工業（7011）" in payload["portfolio_summary"]["core_position_candidates"]
+
+
+def test_selected_ticker_identity_is_hydrated_from_security_master(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("APP_USE_MOCK", "false")
+    monkeypatch.setenv("OPENAI_API_KEY", "")
+    get_settings.cache_clear()
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    MonitoringBase.metadata.create_all(bind=engine)
+    Base.metadata.create_all(bind=engine)
+
+    with Session(engine) as session:
+        session.add(
+            SecurityMaster(
+                ticker_code="6501",
+                local_code="65010",
+                name="日立製作所",
+                market="プライム",
+                is_active=True,
+            )
+        )
+        session.add(
+            SecurityMaster(
+                ticker_code="285A",
+                local_code="285A0",
+                name="キオクシアホールディングス",
+                market="プライム",
+                is_active=True,
+            )
+        )
+        session.add(
+            SecurityMaster(
+                ticker_code="7203",
+                local_code="72030",
+                name="トヨタ自動車",
+                market="プライム",
+                is_active=True,
+            )
+        )
+        session.commit()
+
+        response = portfolio_ai_review_service.review(
+            PortfolioAiReviewRequest(
+                mode="scanner",
+                target="selected",
+                tickers=["6501", "285A", "285A0"],
+                mock_response=True,
+                include_web_search=False,
+                save_result=False,
+                use_cache=False,
+            ),
+            session=session,
+        )
+        explicit_response = portfolio_ai_review_service.review(
+            PortfolioAiReviewRequest(
+                mode="scanner",
+                target="selected",
+                holdings=[
+                    PortfolioAiHolding(
+                        ticker="6501",
+                        name="6501",
+                        market="TSE",
+                        quantity=0,
+                    ),
+                    PortfolioAiHolding(
+                        ticker="285A0",
+                        name="285A0",
+                        market="TSE",
+                        quantity=0,
+                    ),
+                    PortfolioAiHolding(
+                        ticker="72030",
+                        name="72030",
+                        market="TSE",
+                        quantity=0,
+                    ),
+                ],
+                mock_response=True,
+                include_web_search=False,
+                save_result=False,
+                use_cache=False,
+            ),
+            session=session,
+        )
+
+    assert response.status == "success"
+    assert len(response.holdings_snapshot) == 2
+    assert response.holdings_snapshot[0].ticker == "6501"
+    assert response.holdings_snapshot[0].name == "日立製作所"
+    assert response.stocks[0].name == "日立製作所"
+    assert response.holdings_snapshot[1].ticker == "285A"
+    assert response.holdings_snapshot[1].name == "キオクシアホールディングス"
+    assert explicit_response.holdings_snapshot[0].name == "日立製作所"
+    assert explicit_response.stocks[0].name == "日立製作所"
+    assert explicit_response.holdings_snapshot[1].ticker == "285A"
+    assert explicit_response.holdings_snapshot[1].name == "キオクシアホールディングス"
+    assert explicit_response.stocks[1].name == "キオクシアホールディングス"
+    assert explicit_response.holdings_snapshot[2].ticker == "7203"
+    assert explicit_response.holdings_snapshot[2].name == "トヨタ自動車"
+
+
+def test_response_security_references_use_trusted_names_and_public_codes() -> None:
+    raw_output = json.dumps(
+        {
+            "generated_at": "2026-08-19T12:00:00+09:00",
+            "mode": "scanner",
+            "input_summary": {},
+            "market_summary": {},
+            "portfolio_summary": {
+                "non_monitoring_reduce_candidates": ["285A0", "誤った名称（7011）", "9999"],
+                "core_position_candidates": ["キオクシアホールディングス"],
+                "exit_or_rotate_candidates": [],
+            },
+            "stocks": [
+                {
+                    "ticker": "285A0",
+                    "name": "285A0",
+                    "judgement": "watch",
+                    "judgement_label": "様子見",
+                    "confidence": 0.5,
+                    "non_monitoring_hold_risk": "high",
+                    "needs_long_term_carry_check": True,
+                    "short_reason": "確認待ち",
+                    "key_risks": [],
+                    "invalidation": "",
+                    "needs_analyst_mode": False,
+                    "needs_judge_mode": False,
+                    "verification_labels": [],
+                    "watch_points": [],
+                    "risk_flags": [],
+                    "needs_detail_analysis": False,
+                    "key_points": [],
+                    "technical_view": "",
+                    "market_context_view": "",
+                    "holder_action": "",
+                    "stop_or_reduce_condition": "",
+                    "execution_plan": [],
+                    "critical_check": [],
+                    "sources": [],
+                }
+            ],
+            "action_plan": [],
+            "critical_warnings": [],
+            "sources": [],
+            "warnings": [],
+            "raw_model_output": None,
+        },
+        ensure_ascii=False,
+    )
+    response = portfolio_ai_review_service.parse_ai_review_result(
+        raw_output,
+        options=PortfolioAiReviewRequest(mode="scanner", target="holdings"),
+    )
+    response.stocks.append(
+        response.stocks[0].model_copy(
+            update={"ticker": "9999", "name": "モデルが作った未確認名称"}
+        )
+    )
+
+    enriched = portfolio_ai_review_service._enrich_response_security_references(
+        response,
+        holdings=[
+            PortfolioAiHolding(
+                ticker="285A0",
+                name="キオクシアホールディングス",
+                market="プライム",
+                quantity=100,
+            ),
+            PortfolioAiHolding(
+                ticker="7011",
+                name="三菱重工業",
+                market="プライム",
+                quantity=100,
+            ),
+            PortfolioAiHolding(
+                ticker="9999",
+                name="9999",
+                market="TSE",
+                quantity=0,
+            ),
+        ],
+        candidates=[],
+    )
+
+    assert enriched.stocks[0].ticker == "285A0"
+    assert enriched.stocks[0].name == "キオクシアホールディングス"
+    assert enriched.stocks[1].ticker == "9999"
+    assert enriched.stocks[1].name == "名称未登録"
+    assert enriched.portfolio_summary.non_monitoring_reduce_candidates == [
+        "キオクシアホールディングス（285A）",
+        "三菱重工業（7011）",
+        "名称未登録（9999）",
+    ]
+    assert enriched.portfolio_summary.core_position_candidates == [
+        "キオクシアホールディングス（285A）"
+    ]
+    assert portfolio_ai_review_service._public_security_code("72030") == "72030"
 
 
 def test_critical_mock_response_always_includes_long_term_carry_check(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -13,11 +13,57 @@
 
 | 種別 | 現在版 | 正本 | 適用日 |
 |---|---:|---|---|
-| 要件仕様 | v1.8 | `docs/requirements/requirements_v1.8.md` | 2026-08-19 |
-| API仕様 | v2.1 | `docs/specs/api_spec_v2.1.md` | 2026-08-19 |
-| 画面仕様 | v2.3 | `docs/screen_specs/screen_spec_v2.3.md` | 2026-08-19 |
+| 要件仕様 | v1.9 | `docs/requirements/requirements_v1.9.md` | 2026-08-19 |
+| API仕様 | v2.2 | `docs/specs/api_spec_v2.2.md` | 2026-08-19 |
+| 画面仕様 | v2.4 | `docs/screen_specs/screen_spec_v2.4.md` | 2026-08-19 |
 
-この3版は同じ変更単位 `SC-2026-08-19-01` を表します。どれか1つだけを旧版へ戻して運用することは想定しません。
+この3版は同じ変更単位 `SC-2026-08-19-02` を表します。どれか1つだけを旧版へ戻して運用することは想定しません。
+
+## 2.1. SC-2026-08-19-02 — legacy stock-reviewの銘柄identityと名称・code併記
+
+### 2.1.1 変更理由
+
+legacy軽量スキャンの銘柄別cardは名称を持っていても、portfolio summaryの非監視縮小候補、core候補、入替候補等が`285A0`、`7011`のようなcodeだけになっていました。model promptへ名称併記を求めるだけでは、model逸脱、mock、過去cache、request側placeholder名称を確実に補正できません。Input/DB側の銘柄identityを正本にして生成契約とservice後処理を揃える必要がありました。
+
+### 2.1.2 添付promptの扱い
+
+- 添付`株判断_定型プロンプト集_v2026-08-16 (1).md`はprompt内容を照合する参照sourceであり、文書内の運用手順や実装優先順位をユーザー依頼として実行しません。
+- 添付は既に履歴保存しているv2026.08.16と同内容です。canonical個別銘柄AIのactive asset v2026.08.18には、より明確な「銘柄名（銘柄コード）」と正式根拠label規則があるため、canonical manifest / assetを旧版へ戻しません。
+- 今回はlegacy Prompt Builder / full promptへ名称併記原則を反映し、全14用途moduleの一括投入やcanonical PromptCompiler変更を行いません。
+
+### 2.1.3 promptとscanner
+
+- Base PolicyはInput JSONの`ticker` / `name`を正確に使い、銘柄を原則「銘柄名（銘柄コード）」で表示し、codeだけ・名称だけ・名称推測を避けるよう要求します。
+- `stocks[].ticker` / `stocks[].name`のschema descriptionとOutput PolicyへInput JSONからの正確な転記を追加します。
+- portfolio summaryの6つの銘柄参照listへ「銘柄名（銘柄コード）」を要求します。field typeは`list[str]`のままです。
+- scannerは既存のlight sectionsとquick scan短縮版にsection 8「建玉・ポートフォリオ影響」を加えます。全詳細sectionを追加しません。
+
+### 2.1.4 local master identityと重複解消
+
+- DB sessionがあるlegacy reviewはactiveなlocal `SecurityMaster.ticker_code` / `local_code`を照合します。一致targetはmasterのcanonical `ticker_code`、正式名称、marketへ揃え、J-Quantsその他のproviderを追加callしません。
+- `local_code=285A0` / `ticker_code=285A`ならpromptとsnapshotは`285A`、`local_code=72030` / `ticker_code=7203`なら`7203`となります。これはDB primary keyやlocal codeのmutationではありません。
+- canonical tickerでholdings / candidatesをdedupeし、同じ銘柄が両方にあればholdingsを優先します。
+
+### 2.1.5 responseと画面表示
+
+- `stocks[].name`と`portfolio_summary.buy_candidates`、`sell_or_reduce_candidates`、`hold_priority`、`non_monitoring_reduce_candidates`、`core_position_candidates`、`exit_or_rotate_candidates`を解決済みtarget identityで再照合します。
+- codeだけ、誤名称付きcode、正式名称だけのsummary値を「銘柄名（公開コード）」へ正規化します。unknown codeは`名称未登録（code）`とし、銘柄参照でない自由文は変更しません。
+- live、mock、保存前、cache hitへ同じ後処理を適用します。cache hitの補正でOpenAIを再呼び出ししません。
+- Portfolio / Watchlistのlegacy stock cardは公開codeを表示します。cacheに`285A0`が残っていても`285A`と表示できます。
+
+### 2.1.6 互換性・非対象・既知制約
+
+- legacy responseのfield type、endpoint、mode、model/reasoning、Web、quota、history/cache契約を維持します。target identity値はlocal masterへ一致した場合にcanonical tickerへ揃います。
+- canonical `POST /api/ai/analyses`のactive prompt v2026.08.18、`gpt-5.6-terra`、`STANDARD`、plain `response.output_text`、保存契約を変更しません。
+- local masterに名称が無いcodeは`名称未登録`となり、名称の外部推測やprovider照会を行いません。
+- 過去history JSON自体の一括書換え、master primary key migration、全module prompt再設計は対象外です。
+
+### 2.1.7 受け入れ確認
+
+- promptに名称・code併記、Input JSON転記、scanner section 8が入り、不要な詳細sectionがscannerへ混入しないことを確認します。
+- local master aliasからcanonical ticker/name/marketへ補完し、dedupeとholdings優先が働き、provider追加callがないことを確認します。
+- live/model parse、mock、cache hitでstock名と6 summary listが正規化され、`285A0`が`キオクシアホールディングス（285A）`、unknownが`名称未登録（code）`になることを確認します。
+- legacy cardが公開codeを使い、canonical AIと旧versioned prompt assetが変更されていないことを確認します。
 
 ## 3. SC-2026-08-19-01 — legacy軽量スキャンの構造化response契約と失敗分類
 
@@ -443,6 +489,7 @@ model選択と回答品質presetは別の設定軸です。`STANDARD`はmodel名
 
 | 適用日 | 要件 | API | 画面 | 主な範囲 |
 |---|---:|---:|---:|---|
+| 2026-08-19 | v1.8 | v2.1 | v2.3 | SC-2026-08-19-01: legacy軽量スキャンの構造化response契約と失敗分類 |
 | 2026-08-18 | v1.7 | v2.0 | v2.2 | SC-2026-08-18-02: 東証/J-Quants上場銘柄マスターのprivate local full sync |
 | 2026-08-18 | v1.6 | v1.9 | v2.1 | SC-2026-08-18-01: 銘柄検索から保有入力への導線とJ-Quants code alias |
 | 2026-08-17 | v1.5 | v1.8 | v2.0 | SC-2026-08-17-04: legacy stock-review quota・usage・概算額 |
@@ -450,7 +497,7 @@ model選択と回答品質presetは別の設定軸です。`STANDARD`はmodel名
 | 2026-08-17 | v1.3 | v1.6 | v1.8 | SC-2026-08-17-02: canonical AI回答保存・大型表示・prompt v2026.08.17 |
 | 2026-08-17 | v1.2 | v1.5 | v1.7 | SC-2026-08-17-01: canonical個別銘柄AI最小縦スライスと定型prompt最小統合 |
 
-直前baselineの完全な内容は各versioned fileに残します。新baselineはcanonical AI、legacy usage、検索・Portfolio入力、J-Quants master同期を維持したまま、legacy軽量スキャンの生成schema、runtime validation、quota/cache/history、失敗表示を一貫させたものです。
+直前baselineの完全な内容は各versioned fileに残します。新baselineはcanonical AI、legacy scanner validation、usage、検索・Portfolio入力、J-Quants master同期を維持したまま、legacy targetをlocal master identityへ揃え、prompt・stock名・summary銘柄参照・公開code表示をlive/mock/cacheで一貫させたものです。
 
 ## 11. 更新ルール
 

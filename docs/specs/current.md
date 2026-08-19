@@ -1,6 +1,6 @@
 # API Spec Current
 
-> 現在の正本: `api_spec_v2.1.md`
+> 現在の正本: `api_spec_v2.2.md`
 
 ## 概要
 
@@ -9,9 +9,9 @@
 
 ## 現在値
 
-- API仕様書: v2.1
+- API仕様書: v2.2
 - 更新日: 2026-08-19
-- 変更概要: legacy軽量スキャンのsummary alias正規化、schema/runtime一致、scanner schema縮小、parse失敗3分類、raw output救済のquota/cache/history契約を追加
+- 変更概要: legacy targetのlocal master canonical identity、dedupe/holdings優先、prompt名称併記、live/mock/cache共通のstock名・summary参照正規化を追加
 
 ## 主な変更点
 
@@ -30,6 +30,10 @@
 - `concentration_comment` / `summary_view`のcanonical正規化、Pydantic model以内のmode別schema、主要objectの`additionalProperties=false`
 - scanner stock 30項目未満、`judgement` 7値enum、free-text judgementのcanonical code化
 - `parse_failure_kind=json_syntax|root_shape|schema_validation`と、`status=json_parse_failed` raw output救済の成功回数非加算・cache禁止・履歴保存可
+- legacy targetをactive local `SecurityMaster.ticker_code` / `local_code`で解決し、master ticker/name/marketへcanonical化する契約
+- canonical ticker単位のdedupe、holdings/candidates重複時のholdings優先、provider追加callなしの境界
+- `stocks[].name`とsummaryの6つの銘柄参照listを「銘柄名（公開コード）」へlive/mock/cache共通で正規化する契約
+- scannerのsection 8追加、unknown名称label、添付旧版からcanonical v2026.08.18へdowngradeしない境界
 - `openai-standard-2026-08-17`によるtoken/Web検索概算と`unpriced_api_calls`
 - live mode の no-mock 方針
 - J-Quants market proxy を使う市場地合い表示

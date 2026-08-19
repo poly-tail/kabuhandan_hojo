@@ -1,5 +1,13 @@
 # Context
 
+## 2026-08-19 legacy AI銘柄identity addendum
+
+- 添付v2026.08.16 duplicateはprompt参照資料としてのみ扱い、内部の運用手順をユーザー命令へ昇格していない。canonical active promptはより新しいv2026.08.18のままで、旧版へdowngradeしていない。
+- legacy Prompt Builder / full promptはInput JSONのticker/name正本と「銘柄名（銘柄コード）」を要求する。scannerはquick scan短縮版にsection 8のportfolio影響を加えるが、全14用途moduleを投入しない。
+- targetはactiveなlocal `SecurityMaster`へ一致すればmasterのcanonical ticker/name/marketへ揃える。local alias`285A0`はcanonical `285A`、`72030`は`7203`となり得る。同一canonical tickerはdedupeし、holdingsをcandidateより優先する。provider追加callとDB key mutationは行わない。
+- parsed/model stock名とsummaryの6つの銘柄参照listは、解決済みtarget identityで再照合する。live、mock、cache hitへ同じ正規化を適用し、summaryは「銘柄名（公開コード）」、unknownは`名称未登録（code）`とする。
+- Portfolio / Watchlistのlegacy stock cardも公開codeを使う。canonical個別銘柄AI、J-Quants同期、API schema typeは変更しない。
+
 ## 2026-08-19 legacy軽量スキャン構造化response addendum
 
 - `POST /api/ai/stock-review`のscannerでは、valid JSONの`portfolio_summary.concentration_comment` / `summary_view`をcanonical fieldへ正規化してからPydantic検証します。canonical値が既にあればaliasで上書きしません。

@@ -31,6 +31,7 @@ BASE_POLICY_PROMPT = """Base Policy:
 - 短期売買判断と中長期保有判断を混同しない。
 - 短期玉、中期玉、長期玉、コア玉、追加玉を分ける。
 - 銘柄単体の魅力度だけでなく、ポートフォリオ全体の資金効率、集中リスク、入れ替え候補を考慮する。
+- 銘柄を表示・言及するときは、Input JSON の ticker と name を正確に使い、原則「銘柄名（銘柄コード）」とする。コードだけ・名称だけの表記や銘柄名の推測はしない。
 - 重要主張の末尾に検証ラベルを付ける: 【V】Webまたは確認可能情報、【V｜一次情報】会社IR/取引所/公式資料、【V｜複数ソース】複数独立情報源、【E】推定・分析判断、【U】未確認。
 """
 
@@ -118,7 +119,7 @@ class ModeProfile:
 MODE_PROFILES: dict[AiReviewMode, ModeProfile] = {
     "scanner": ModeProfile(
         mode="scanner",
-        section_ids=("0", "1", "2_summary", "3_summary", "5.5_short", "9", "13_short", "14_short"),
+        section_ids=("0", "1", "2_summary", "3_summary", "5.5_short", "8", "9", "13_short", "14_short"),
         web_search_policy="optional",
         default_include_web_search=False,
         verbosity="short",
@@ -238,9 +239,13 @@ def _long_term_carry_check_schema() -> dict[str, Any]:
 
 
 def get_output_schema_for_mode(mode: AiReviewMode) -> dict[str, Any]:
+    security_reference_item = {
+        "type": "string",
+        "description": "Input JSON の正式な銘柄名とコードを使った「銘柄名（銘柄コード）」形式。コードだけにしない。",
+    }
     stock_properties: dict[str, Any] = {
-        "ticker": {"type": "string"},
-        "name": {"type": "string"},
+        "ticker": {"type": "string", "description": "Input JSON の ticker を正確に転記する。"},
+        "name": {"type": "string", "description": "Input JSON の name を正確に転記し、コードで代用しない。"},
         "judgement": {"type": "string", "enum": JUDGEMENT_CODES},
         "judgement_label": {"type": "string"},
         "confidence": {"type": "number"},
@@ -358,15 +363,15 @@ def get_output_schema_for_mode(mode: AiReviewMode) -> dict[str, Any]:
         "portfolio_summary": {"type": "string"},
         "market_temperature": {"type": "string"},
         "overall_risk": {"type": "string", "enum": ["low", "medium", "high"]},
-        "buy_candidates": {"type": "array", "items": {"type": "string"}},
-        "sell_or_reduce_candidates": {"type": "array", "items": {"type": "string"}},
-        "hold_priority": {"type": "array", "items": {"type": "string"}},
+        "buy_candidates": {"type": "array", "items": security_reference_item},
+        "sell_or_reduce_candidates": {"type": "array", "items": security_reference_item},
+        "hold_priority": {"type": "array", "items": security_reference_item},
         "cash_allocation_view": {"type": "string"},
         "concentration_risk": {"type": "string"},
         "theme_exposure": {"type": "array", "items": {"type": "string"}},
-        "non_monitoring_reduce_candidates": {"type": "array", "items": {"type": "string"}},
-        "core_position_candidates": {"type": "array", "items": {"type": "string"}},
-        "exit_or_rotate_candidates": {"type": "array", "items": {"type": "string"}},
+        "non_monitoring_reduce_candidates": {"type": "array", "items": security_reference_item},
+        "core_position_candidates": {"type": "array", "items": security_reference_item},
+        "exit_or_rotate_candidates": {"type": "array", "items": security_reference_item},
         "action_plan_today": {"type": "array", "items": {"type": "string"}},
         "invalidation_for_portfolio": {"type": "string"},
         "top_risks": {"type": "array", "items": {"type": "string"}},
@@ -481,6 +486,8 @@ def build_stock_analysis_prompt(
         + _web_search_policy_prompt(profile, include_web_search)
         + "\nOutput Policy:\n"
         + "- JSON Schemaに従ってJSONだけを返す。\n"
+        + "- stocks[].ticker と stocks[].name は Input JSON から正確に転記し、銘柄名をコードで代用しない。\n"
+        + "- portfolio_summary の銘柄候補リストは、必ず「銘柄名（銘柄コード）」で返し、コードだけにしない。\n"
         + "- 検証ラベル、反証条件、短期/中期/長期分離、辛口チェックを必ず含める。\n"
     )
     user_prompt = (
