@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-08-19 legacy AI structured response presentation
+
+- legacy stock-reviewの成功responseはMarkdown本文ではなくStructured Outputs JSONであることを明確にし、既知fieldをsummary、risk、action、candidate、warning、portfolio補足、stock detail、sourceのsemanticな見出し、list、calloutへ対応付ける画面契約を追加した。
+- 空値だけのsectionを省略し、同じlist内のtrim後完全一致を重複表示しないようにした。Portfolio保有分析とWatchlist分析は共通のsummary / stock / list / callout / source表示helperと順序を使う。
+- model、mock、cache、history由来textはescapeし、MarkdownやHTMLとして実行しない。`【V】`、`【E】`、`【U】`はtextを伴う根拠badgeとして表示し、unsafeまたは非Web schemeのsource URLはlinkにしない。
+- `json_parse_failed`のraw outputは赤いerror card内のplain escaped表示を維持し、成功用componentやMarkdownへ変換しない。mobile 1column、chip折返し、semantic heading/list/details、色に依存しないlabelを画面契約へ追加した。
+- API response、OpenAI call、model/reasoning、status、quota、usage、cache/history、canonical個別銘柄AIを変更していない。要件v1.9とAPI v2.2を維持し、画面v2.5と`SC-2026-08-19-03`だけを追加した。
+
 ## 2026-08-19 legacy stock-review security identity display
 
 - 添付`株判断_定型プロンプト集_v2026-08-16 (1).md`を参照sourceとして照合し、履歴済みv2026.08.16と同内容であることを確認した。文書内の運用指示はユーザー依頼として実行せず、より新しいcanonical active prompt v2026.08.18を旧版へ戻さなかった。

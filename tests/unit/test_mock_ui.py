@@ -114,7 +114,7 @@ def test_dashboard_ui_shells_are_served(monkeypatch: pytest.MonkeyPatch) -> None
     assert "Web検索ON" in top_response.text
     assert "APIなしのサンプル表示（課金なし）" in top_response.text
     assert "reasoning ${data.reasoning_effort}" in top_response.text
-    assert top_response.text.count("${escapeHtml(publicSecurityCode(stock.ticker))}") == 2
+    assert top_response.text.count("${escapeHtml(publicSecurityCode(stock.ticker))}") == 1
     assert "/api/ai/stock-review" in top_response.text
     assert "portfolio-ai-review-results" in top_response.text
     assert "中長期持ち越し・非監視期間リスク" in top_response.text
@@ -270,3 +270,96 @@ def test_dashboard_distinguishes_ai_json_syntax_and_schema_failures(
     assert "JSONルート形式エラー" in html
     assert "JSON構文エラー" in html
     assert html.count("aiReviewResultStatusLabel(data)") >= 2
+
+
+def test_dashboard_formats_structured_ai_reviews_as_safe_semantic_sections(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("APP_USE_MOCK", "true")
+
+    with TestClient(create_app()) as client:
+        response = client.get("/ui/dashboard")
+
+    assert response.status_code == 200
+    html = response.text
+
+    assert 'id="portfolio-ai-review-results" aria-live="polite" aria-busy="false"' in html
+    assert 'id="watchlist-ai-review-results" aria-live="polite" aria-busy="false"' in html
+    assert 'setAiResultBusy("portfolio-ai-review-results", review.status === "loading")' in html
+    assert 'setAiResultBusy("watchlist-ai-review-results", review.status === "loading")' in html
+
+    assert "const renderAiReviewSummary = (data, contextLabel = \"\") => {" in html
+    assert "${renderAiReviewSummary(data)}" in html
+    assert '${renderAiReviewSummary(data, "選択ウォッチリスト")}' in html
+    assert html.count("renderAiReviewSummary(data") == 2
+    assert 'data.mode ? aiModeLabel(data.mode) : ""' not in html
+    assert 'renderAiTextSection("運用スタンス", marketTemperature)' in html
+    assert 'escapeHtml(summary.market_temperature || "-")' not in html
+    assert "const primarySummary = overallView || portfolioSummary;" in html
+    assert 'renderAiTextSection("ポートフォリオ総括", additionalPortfolioSummary)' in html
+    assert 'summary.overall_risk || "-"' not in html
+
+    for heading in (
+        "主要リスク",
+        "今日の優先事項",
+        "買い候補",
+        "売却・縮小候補",
+        "保有優先",
+        "テーマ偏り",
+        "毎日見られないなら縮小すべき銘柄",
+        "コア玉として残せる銘柄",
+        "入れ替え候補",
+        "具体的な執行案",
+        "重要警告",
+        "資金配分",
+        "集中リスク",
+        "全体反証",
+        "注意事項",
+    ):
+        assert f'("{heading}"' in html
+    assert "<h4>参照情報</h4>" in html
+
+    assert "const uniqueAiItems = (items = [], excludedItems = []) => {" in html
+    assert "const warnings = uniqueAiItems(data.warnings || [], criticalWarnings);" in html
+    assert "if (!item || excluded.has(item) || seen.has(item)) return false;" in html
+
+    assert "const renderAiText = (value) => {" in html
+    assert "source.matchAll(/(【([VEU])" in html
+    assert "html += escapeHtml(source.slice(cursor, match.index));" in html
+    assert 'V: { marker: "【V】", meaning: "確認済み" }' in html
+    assert 'E: { marker: "【E】", meaning: "推定" }' in html
+    assert 'U: { marker: "【U】", meaning: "未確認" }' in html
+    assert "const meaningAlreadyFollows = remainder.trimStart().startsWith(label.meaning);" in html
+    assert 'const visibleLabel = `${label.marker}${meaningAlreadyFollows ? "" : label.meaning}`;' in html
+    assert '${detail ? `<span class="ai-evidence-detail">｜${escapeHtml(detail)}</span>` : ""}' in html
+    assert "ai-evidence-v" in html
+    assert "ai-evidence-e" in html
+    assert "ai-evidence-u" in html
+
+    assert "const renderAiRawFallback = (rawOutput) => {" in html
+    assert "OpenAI生応答（解析できなかった内容）" in html
+    assert '<pre class="ai-raw-content">${escapeHtml(String(rawOutput).slice(0, 20000))}</pre>' in html
+    assert html.count("const rawOutput = renderAiRawFallback(data.raw_model_output);") == 2
+
+    assert "const safeAiSourceUrl = (value) => {" in html
+    assert "if (!/^https?:\\/\\//i.test(candidate)) return null;" in html
+    assert '<span class="source-link source-link-plain"' in html
+    assert 'rel="noopener noreferrer"' in html
+    assert '${renderAiText(stock.judgement_label || aiJudgementLabel(stock.judgement))}' in html
+    assert '${renderAiText(stock.judgement)}</span>' in html
+    assert "const renderAiStockCard = (stock) => {" in html
+    assert html.count("const stockCards = (data.stocks || []).map(renderAiStockCard).join(\"\");") == 2
+    assert '<h3 class="ai-card-title">${renderAiText(stock.name)}</h3>' in html
+    assert '<h3 class="ai-card-title">${escapeHtml(aiModeLabel(data.mode))}</h3>' in html
+    assert 'renderAiListSection("時間軸別判断", timeHorizonViews)' in html
+    assert 'renderAiTextSection("不確実性", stock.uncertainty_notes, "warning")' in html
+    assert '<div class="subtle">今日見るべきポイント</div>' not in html
+    assert "const renderAiSubList = (title, items = []) => {" in html
+    assert "const renderAiSubText = (title, value) => {" in html
+
+    assert ".ai-review-grid {" in html
+    assert ".ai-review-card {" in html
+    assert ".ai-result-section {" in html
+    assert "white-space: pre-wrap;" in html
+    assert "marked" not in html.lower()
+    assert "cdn.jsdelivr.net" not in html

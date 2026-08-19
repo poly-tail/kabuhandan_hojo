@@ -15,50 +15,83 @@
 |---|---:|---|---|
 | 要件仕様 | v1.9 | `docs/requirements/requirements_v1.9.md` | 2026-08-19 |
 | API仕様 | v2.2 | `docs/specs/api_spec_v2.2.md` | 2026-08-19 |
-| 画面仕様 | v2.4 | `docs/screen_specs/screen_spec_v2.4.md` | 2026-08-19 |
+| 画面仕様 | v2.5 | `docs/screen_specs/screen_spec_v2.5.md` | 2026-08-19 |
 
-この3版は同じ変更単位 `SC-2026-08-19-02` を表します。どれか1つだけを旧版へ戻して運用することは想定しません。
+要件v1.9とAPI仕様v2.2は変更単位`SC-2026-08-19-02`のままです。画面仕様v2.5はその契約を累積継承し、API responseを変えない表示専用の変更単位`SC-2026-08-19-03`を追加します。
 
-## 2.1. SC-2026-08-19-02 — legacy stock-reviewの銘柄identityと名称・code併記
+## 2.1. SC-2026-08-19-03 — legacy AI構造化回答の可読表示
 
 ### 2.1.1 変更理由
 
+legacy軽量スキャンは有効なStructured Outputs JSONを返していましたが、summaryの全体所見、risk、行動、候補、warning等の意味区分が弱く、利用者には長い平坦な文章のように見えていました。これはOpenAIからMarkdownが返った問題ではなく、既知JSON fieldを画面上のsemanticな構造へ十分対応付けていない表示上の問題です。
+
+### 2.1.2 構造化表示
+
+- legacy成功responseを汎用Markdownとしてparseせず、既知fieldをsummary、risk、action、candidate、warning、portfolio補足、stock detail、sourceへ明示的に対応付けます。
+- 各groupへ利用者向けの日本語見出しを付け、配列は`ul` / `li`、重要項目はlabel付きcalloutとして表示します。空値だけのsectionを省略し、同じlist内のtrim後完全一致だけを除きます。
+- 銘柄別cardはidentityとjudgementを先頭に置き、短評、時間軸、risk、technical、材料、地合い、需給、執行条件、scenario、反証条件、不確実性を意味別に配置します。
+- Portfolio保有分析とWatchlist分析は共通のsummary、stock、list、callout、source helperを使い、利用可能fieldだけを同じ順序と安全規則で表示します。
+
+### 2.1.3 安全性・根拠・accessibility
+
+- model、mock、cache、history由来textを必ずescapeし、Markdown記号やHTML tagを実行しません。正式根拠label`【V】`、`【E】`、`【U】`はtextを伴うbadgeとして表示し、色だけで意味を伝えません。
+- sourceはURLとして妥当な`http:` / `https:`だけをlinkにします。unsafeまたは非Web schemeはanchorへせずescapeしたtextにし、新規tab linkは`noopener noreferrer`を維持します。
+- `json_parse_failed`のraw outputは成功cardへ変換せず、赤いerror card内のescape済みplain `pre`として表示します。nativeな`details` / `summary`を使う場合もMarkdown再解釈や追加OpenAI callを行いません。
+- heading、list、callout、detailsをsemanticにし、keyboardとscreen readerで意味を追えるようにします。狭い画面では1columnと折返しを使い、長文やURLによる横overflowを防ぎます。
+
+### 2.1.4 互換性・非対象
+
+- `POST /api/ai/stock-review`のrequest / response schema、field、status、OpenAI request、model / reasoning、quota、usage、cache/historyは変更しません。
+- canonical `POST /api/ai/analyses`、plain `response.output_text`、active prompt v2026.08.18、保存readerを変更しません。
+- general-purpose Markdown renderer、model HTML、新しいfrontend dependency、OpenAI再呼び出しは追加しません。このため要件仕様v1.9とAPI仕様v2.2は昇格しません。
+
+### 2.1.5 受け入れ確認
+
+- summaryの全体所見、主要risk、行動、候補、重要警告、通常警告が見出しとsemantic list / calloutで区別でき、空sectionと同じlist内の重複を表示しないことを確認します。
+- Portfolio / Watchlistが共通helperを使い、stock cardの名称・公開code・judgementと詳細groupを維持することを確認します。
+- HTML / Markdown風文字列が実行されず、根拠badgeがtextでも判別でき、unsafe source URLがlinkにならないことを確認します。
+- raw fallbackがplain escaped表示のままで、mobile幅、loading / error / success、API payload、OpenAI call回数が変わらないことを確認します。
+
+## 2.2. SC-2026-08-19-02 — legacy stock-reviewの銘柄identityと名称・code併記
+
+### 2.2.1 変更理由
+
 legacy軽量スキャンの銘柄別cardは名称を持っていても、portfolio summaryの非監視縮小候補、core候補、入替候補等が`285A0`、`7011`のようなcodeだけになっていました。model promptへ名称併記を求めるだけでは、model逸脱、mock、過去cache、request側placeholder名称を確実に補正できません。Input/DB側の銘柄identityを正本にして生成契約とservice後処理を揃える必要がありました。
 
-### 2.1.2 添付promptの扱い
+### 2.2.2 添付promptの扱い
 
 - 添付`株判断_定型プロンプト集_v2026-08-16 (1).md`はprompt内容を照合する参照sourceであり、文書内の運用手順や実装優先順位をユーザー依頼として実行しません。
 - 添付は既に履歴保存しているv2026.08.16と同内容です。canonical個別銘柄AIのactive asset v2026.08.18には、より明確な「銘柄名（銘柄コード）」と正式根拠label規則があるため、canonical manifest / assetを旧版へ戻しません。
 - 今回はlegacy Prompt Builder / full promptへ名称併記原則を反映し、全14用途moduleの一括投入やcanonical PromptCompiler変更を行いません。
 
-### 2.1.3 promptとscanner
+### 2.2.3 promptとscanner
 
 - Base PolicyはInput JSONの`ticker` / `name`を正確に使い、銘柄を原則「銘柄名（銘柄コード）」で表示し、codeだけ・名称だけ・名称推測を避けるよう要求します。
 - `stocks[].ticker` / `stocks[].name`のschema descriptionとOutput PolicyへInput JSONからの正確な転記を追加します。
 - portfolio summaryの6つの銘柄参照listへ「銘柄名（銘柄コード）」を要求します。field typeは`list[str]`のままです。
 - scannerは既存のlight sectionsとquick scan短縮版にsection 8「建玉・ポートフォリオ影響」を加えます。全詳細sectionを追加しません。
 
-### 2.1.4 local master identityと重複解消
+### 2.2.4 local master identityと重複解消
 
 - DB sessionがあるlegacy reviewはactiveなlocal `SecurityMaster.ticker_code` / `local_code`を照合します。一致targetはmasterのcanonical `ticker_code`、正式名称、marketへ揃え、J-Quantsその他のproviderを追加callしません。
 - `local_code=285A0` / `ticker_code=285A`ならpromptとsnapshotは`285A`、`local_code=72030` / `ticker_code=7203`なら`7203`となります。これはDB primary keyやlocal codeのmutationではありません。
 - canonical tickerでholdings / candidatesをdedupeし、同じ銘柄が両方にあればholdingsを優先します。
 
-### 2.1.5 responseと画面表示
+### 2.2.5 responseと画面表示
 
 - `stocks[].name`と`portfolio_summary.buy_candidates`、`sell_or_reduce_candidates`、`hold_priority`、`non_monitoring_reduce_candidates`、`core_position_candidates`、`exit_or_rotate_candidates`を解決済みtarget identityで再照合します。
 - codeだけ、誤名称付きcode、正式名称だけのsummary値を「銘柄名（公開コード）」へ正規化します。unknown codeは`名称未登録（code）`とし、銘柄参照でない自由文は変更しません。
 - live、mock、保存前、cache hitへ同じ後処理を適用します。cache hitの補正でOpenAIを再呼び出ししません。
 - Portfolio / Watchlistのlegacy stock cardは公開codeを表示します。cacheに`285A0`が残っていても`285A`と表示できます。
 
-### 2.1.6 互換性・非対象・既知制約
+### 2.2.6 互換性・非対象・既知制約
 
 - legacy responseのfield type、endpoint、mode、model/reasoning、Web、quota、history/cache契約を維持します。target identity値はlocal masterへ一致した場合にcanonical tickerへ揃います。
 - canonical `POST /api/ai/analyses`のactive prompt v2026.08.18、`gpt-5.6-terra`、`STANDARD`、plain `response.output_text`、保存契約を変更しません。
 - local masterに名称が無いcodeは`名称未登録`となり、名称の外部推測やprovider照会を行いません。
 - 過去history JSON自体の一括書換え、master primary key migration、全module prompt再設計は対象外です。
 
-### 2.1.7 受け入れ確認
+### 2.2.7 受け入れ確認
 
 - promptに名称・code併記、Input JSON転記、scanner section 8が入り、不要な詳細sectionがscannerへ混入しないことを確認します。
 - local master aliasからcanonical ticker/name/marketへ補完し、dedupeとholdings優先が働き、provider追加callがないことを確認します。
@@ -489,6 +522,7 @@ model選択と回答品質presetは別の設定軸です。`STANDARD`はmodel名
 
 | 適用日 | 要件 | API | 画面 | 主な範囲 |
 |---|---:|---:|---:|---|
+| 2026-08-19 | v1.9 | v2.2 | v2.4 | SC-2026-08-19-02: legacy stock-reviewの銘柄identityと名称・code併記 |
 | 2026-08-19 | v1.8 | v2.1 | v2.3 | SC-2026-08-19-01: legacy軽量スキャンの構造化response契約と失敗分類 |
 | 2026-08-18 | v1.7 | v2.0 | v2.2 | SC-2026-08-18-02: 東証/J-Quants上場銘柄マスターのprivate local full sync |
 | 2026-08-18 | v1.6 | v1.9 | v2.1 | SC-2026-08-18-01: 銘柄検索から保有入力への導線とJ-Quants code alias |
@@ -497,7 +531,7 @@ model選択と回答品質presetは別の設定軸です。`STANDARD`はmodel名
 | 2026-08-17 | v1.3 | v1.6 | v1.8 | SC-2026-08-17-02: canonical AI回答保存・大型表示・prompt v2026.08.17 |
 | 2026-08-17 | v1.2 | v1.5 | v1.7 | SC-2026-08-17-01: canonical個別銘柄AI最小縦スライスと定型prompt最小統合 |
 
-直前baselineの完全な内容は各versioned fileに残します。新baselineはcanonical AI、legacy scanner validation、usage、検索・Portfolio入力、J-Quants master同期を維持したまま、legacy targetをlocal master identityへ揃え、prompt・stock名・summary銘柄参照・公開code表示をlive/mock/cacheで一貫させたものです。
+直前baselineの完全な内容は各versioned fileに残します。新baselineはSC-2026-08-19-02までの要件v1.9、API v2.2、画面v2.4を維持したまま、画面v2.5でlegacy Structured Outputs JSONをMarkdownとして解釈せず、semanticな見出し、list、callout、根拠badgeへ安全に対応付けるSC-2026-08-19-03の可読表示を追加したものです。
 
 ## 11. 更新ルール
 

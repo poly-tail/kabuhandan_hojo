@@ -1,6 +1,6 @@
 # Screen Spec Current
 
-> 現在の正本: `screen_spec_v2.4.md`
+> 現在の正本: `screen_spec_v2.5.md`
 
 ## 概要
 
@@ -9,9 +9,9 @@
 
 ## 現在値
 
-- 画面仕様書: v2.4
+- 画面仕様書: v2.5
 - 更新日: 2026-08-19
-- 変更概要: legacy AI stock cardとsummaryの銘柄名・公開code併記、local master canonical identity、unknown名称label、live/mock/cache共通表示を追加
+- 変更概要: legacy Structured Outputs JSONをsemanticな見出し、list、callout、根拠badgeへ安全に対応付け、Portfolio / Watchlistで共通化
 
 ## 主な変更点
 
@@ -25,6 +25,9 @@
 - 取得、新規、更新、再有効化、無効化countのsuccess feedbackと、seed fallbackを全件成功表示しない境界
 - BYOK/private local/full dataset非同梱・非再配布、地方取引所単独銘柄を保証しない表示範囲
 - dashboard legacy AI usage panelと利用者向けholdings-source label
+- legacy成功responseはMarkdown本文として解釈せず、既知JSON fieldを全体所見、risk、行動、候補、warning、stock detail、sourceへ意味別表示すること
+- 空section省略、同じlist内の重複除去、Portfolio / Watchlist共通helper、escaped textと文字label付き`【V】` / `【E】` / `【U】` badge
+- unsafe source URLをlinkにせず、raw fallbackを赤いerror card内のplain escaped表示に保ち、mobile / keyboard / screen readerで読めること
 - `json_parse_failed`を成功表示しない赤いerror cardと、`json_syntax` / `root_shape` / `schema_validation`の利用者向けlabel
 - raw output救済を成功回数とcacheへ含めず、調査用historyと生応答表示を維持する境界
 - scannerは軽量生成schemaを使い、runtimeの空値・既定値を確認済みの詳細分析として強調しないこと

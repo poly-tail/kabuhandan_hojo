@@ -445,12 +445,122 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
       }
 
       .ai-review-grid {
+        display: grid;
+        gap: 16px;
         margin-top: 14px;
+      }
+
+      .ai-review-card {
+        display: grid;
+        gap: 14px;
+        min-width: 0;
+        overflow-wrap: anywhere;
       }
 
       .ai-review-summary {
         border-color: rgba(0, 109, 91, 0.18);
         background: rgba(0, 109, 91, 0.06);
+      }
+
+      .ai-summary-lead, .ai-copy {
+        color: #30423d;
+        line-height: 1.75;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+      }
+
+      .ai-summary-lead {
+        font-size: 15px;
+        font-weight: 600;
+      }
+
+      .ai-card-title {
+        margin: 0;
+        font-size: 18px;
+        line-height: 1.4;
+      }
+
+      .ai-result-section {
+        display: grid;
+        gap: 8px;
+        min-width: 0;
+        padding: 14px;
+        border: 1px solid rgba(29, 43, 42, 0.08);
+        border-radius: 14px;
+        background: rgba(255, 255, 255, 0.7);
+      }
+
+      .ai-result-section h4 {
+        margin: 0;
+        color: var(--ink);
+        font-size: 15px;
+        line-height: 1.4;
+      }
+
+      .ai-result-subsection {
+        display: grid;
+        gap: 6px;
+        min-width: 0;
+      }
+
+      .ai-result-subsection h5 {
+        margin: 0;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.4;
+      }
+
+      .ai-result-section.action {
+        border-color: rgba(37, 88, 169, 0.18);
+        background: rgba(37, 88, 169, 0.06);
+      }
+
+      .ai-result-section.warning {
+        border-color: rgba(184, 92, 47, 0.24);
+        background: rgba(184, 92, 47, 0.07);
+      }
+
+      .ai-evidence {
+        display: inline-flex;
+        align-items: center;
+        margin-inline: 0.12em;
+        padding: 1px 6px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        font-size: 0.8em;
+        font-weight: 700;
+        line-height: 1.45;
+        vertical-align: baseline;
+        white-space: normal;
+      }
+
+      .ai-evidence-detail { font-weight: 500; }
+
+      .ai-evidence-v { color: var(--good); background: rgba(21, 115, 71, 0.1); }
+      .ai-evidence-e { color: #8a5a00; background: rgba(138, 90, 0, 0.1); }
+      .ai-evidence-u { color: var(--info); background: rgba(37, 88, 169, 0.1); }
+
+      .ai-raw-output {
+        min-width: 0;
+        padding: 12px 14px;
+        border: 1px dashed rgba(184, 92, 47, 0.35);
+        border-radius: 14px;
+        background: rgba(255, 255, 255, 0.62);
+      }
+
+      .ai-raw-output summary {
+        cursor: pointer;
+        font-weight: 700;
+      }
+
+      .ai-raw-content {
+        max-height: 420px;
+        margin: 12px 0 0;
+        overflow: auto;
+        color: #30423d;
+        font: 12px/1.6 ui-monospace, "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
       }
 
       .judgement-badge {
@@ -472,10 +582,14 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
       .judgement-badge.urgent_review { color: #9d174d; background: rgba(157, 23, 77, 0.12); }
 
       .compact-list {
-        margin: 8px 0 0;
-        padding-left: 18px;
+        margin: 0;
+        padding-left: 20px;
         color: #30423d;
-        line-height: 1.55;
+        line-height: 1.65;
+      }
+
+      .compact-list li + li {
+        margin-top: 7px;
       }
 
       .screen-table, .split-bars, .split-bar {
@@ -522,6 +636,11 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
         color: var(--accent);
         text-decoration: none;
         font-size: 13px;
+      }
+
+      .source-link-plain {
+        color: var(--muted);
+        background: rgba(91, 100, 112, 0.08);
       }
 
       .detail-cta {
@@ -704,6 +823,8 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
       @media (max-width: 640px) {
         main { padding: 18px 14px 40px; }
         .panel { padding: 20px; }
+        .ai-review-card { padding: 16px; }
+        .ai-result-section { padding: 12px; }
         .kpi-grid, .status-grid, .metric-list, .search-row, .search-result, .inline-grid { grid-template-columns: 1fr; }
       }
     </style>
@@ -849,7 +970,7 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
               <div class="search-feedback" id="portfolio-ai-review-feedback">未実行</div>
               <textarea class="textarea prompt-output" id="stock-ai-prompt-output" readonly placeholder="ChatGPT投入用プロンプト"></textarea>
             </div>
-            <div class="ai-review-grid" id="portfolio-ai-review-results"></div>
+            <div class="ai-review-grid" id="portfolio-ai-review-results" aria-live="polite" aria-busy="false"></div>
             <form class="search-row" id="portfolio-form" style="margin-top: 12px;">
               <input class="search-input" id="portfolio-ticker-input" name="ticker_code" placeholder="7203 / 285A" aria-label="保有銘柄コード" />
               <input class="search-input" id="portfolio-quantity-input" name="quantity" type="number" step="0.0001" min="0.0001" placeholder="100" aria-label="保有数量" />
@@ -878,7 +999,7 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
               </div>
               <div class="search-feedback" id="watchlist-ai-review-feedback">選択銘柄はAI分析パネルの「選択銘柄」で実行します。</div>
             </div>
-            <div class="ai-review-grid" id="watchlist-ai-review-results"></div>
+            <div class="ai-review-grid" id="watchlist-ai-review-results" aria-live="polite" aria-busy="false"></div>
             <div class="stack" id="watchlist-list"></div>
           </section>
         </div>
@@ -1101,6 +1222,13 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
         }
       };
 
+      const setAiResultBusy = (id, busy) => {
+        const node = document.getElementById(id);
+        if (node) {
+          node.setAttribute("aria-busy", busy ? "true" : "false");
+        }
+      };
+
       const text = (id, value) => {
         const node = document.getElementById(id);
         if (node) {
@@ -1250,18 +1378,190 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
         none: "対象: 未指定",
       }[source] || "対象: 未確認");
 
+      const uniqueAiItems = (items = [], excludedItems = []) => {
+        const excluded = new Set(
+          (excludedItems || []).map((item) => String(item ?? "").trim()).filter(Boolean),
+        );
+        const seen = new Set();
+        return (items || [])
+          .map((item) => String(item ?? "").trim())
+          .filter((item) => {
+            if (!item || excluded.has(item) || seen.has(item)) return false;
+            seen.add(item);
+            return true;
+          });
+      };
+
+      const renderAiText = (value) => {
+        const source = String(value ?? "");
+        const evidenceLabels = {
+          V: { marker: "【V】", meaning: "確認済み" },
+          E: { marker: "【E】", meaning: "推定" },
+          U: { marker: "【U】", meaning: "未確認" },
+        };
+        let cursor = 0;
+        let html = "";
+        for (const match of source.matchAll(/(【([VEU])(?:｜([^】\r\n]+))?】)/g)) {
+          html += escapeHtml(source.slice(cursor, match.index));
+          const code = match[2];
+          const label = evidenceLabels[code];
+          const detail = String(match[3] || "").trim();
+          const remainder = source.slice(match.index + match[1].length);
+          const meaningAlreadyFollows = remainder.trimStart().startsWith(label.meaning);
+          const visibleLabel = `${label.marker}${meaningAlreadyFollows ? "" : label.meaning}`;
+          const accessibleLabel = detail ? `${label.meaning}、${detail}` : label.meaning;
+          html += `<span class="ai-evidence ai-evidence-${code.toLowerCase()}" title="${escapeAttr(accessibleLabel)}" aria-label="${escapeAttr(accessibleLabel)}"><span>${escapeHtml(visibleLabel)}</span>${detail ? `<span class="ai-evidence-detail">｜${escapeHtml(detail)}</span>` : ""}</span>`;
+          cursor = match.index + match[1].length;
+        }
+        return html + escapeHtml(source.slice(cursor));
+      };
+
+      const renderAiParagraph = (value, className = "ai-copy") => {
+        const content = String(value ?? "").trim();
+        if (!content) return "";
+        return `<p class="${escapeAttr(className)}">${renderAiText(content)}</p>`;
+      };
+
       const renderCompactList = (items = []) => {
-        if (!items.length) return "";
-        return `<ul class="compact-list">${items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`;
+        const uniqueItems = uniqueAiItems(items);
+        if (!uniqueItems.length) return "";
+        return `<ul class="compact-list">${uniqueItems.map((item) => `<li>${renderAiText(item)}</li>`).join("")}</ul>`;
+      };
+
+      const renderAiListSection = (title, items = [], tone = "") => {
+        const list = renderCompactList(items);
+        if (!list) return "";
+        const toneClass = tone ? ` ${tone}` : "";
+        return `<section class="ai-result-section${toneClass}"><h4>${escapeHtml(title)}</h4>${list}</section>`;
+      };
+
+      const renderAiTextSection = (title, value, tone = "") => {
+        const paragraph = renderAiParagraph(value);
+        if (!paragraph) return "";
+        const toneClass = tone ? ` ${tone}` : "";
+        return `<section class="ai-result-section${toneClass}"><h4>${escapeHtml(title)}</h4>${paragraph}</section>`;
+      };
+
+      const renderAiSubList = (title, items = []) => {
+        const list = renderCompactList(items);
+        if (!list) return "";
+        return `<div class="ai-result-subsection"><h5>${escapeHtml(title)}</h5>${list}</div>`;
+      };
+
+      const renderAiSubText = (title, value) => {
+        const paragraph = renderAiParagraph(value);
+        if (!paragraph) return "";
+        return `<div class="ai-result-subsection"><h5>${escapeHtml(title)}</h5>${paragraph}</div>`;
+      };
+
+      const renderAiRawFallback = (rawOutput) => {
+        if (!String(rawOutput ?? "").trim()) return "";
+        return `
+          <details class="ai-raw-output">
+            <summary>OpenAI生応答（解析できなかった内容）</summary>
+            <pre class="ai-raw-content">${escapeHtml(String(rawOutput).slice(0, 20000))}</pre>
+          </details>
+        `;
+      };
+
+      const safeAiSourceUrl = (value) => {
+        const candidate = String(value ?? "").trim();
+        if (!/^https?:\/\//i.test(candidate)) return null;
+        try {
+          const parsed = new URL(candidate);
+          return ["http:", "https:"].includes(parsed.protocol) ? parsed.href : null;
+        } catch {
+          return null;
+        }
       };
 
       const renderAiSources = (sources = []) => {
-        if (!sources.length) return "";
-        return renderSourceLinks(sources.map((source) => ({
-          label: source.title || source.url,
-          url: source.url,
-          note: source.title || "",
-        })));
+        const uniqueSources = [];
+        const seen = new Set();
+        for (const source of sources || []) {
+          const label = String(source?.title || source?.url || "").trim();
+          const url = String(source?.url || "").trim();
+          const key = `${label}\n${url}`;
+          if (!label || seen.has(key)) continue;
+          seen.add(key);
+          uniqueSources.push({ label, url, note: String(source?.title || "") });
+        }
+        if (!uniqueSources.length) return "";
+        const links = uniqueSources.map((source) => {
+          const safeUrl = safeAiSourceUrl(source.url);
+          if (!safeUrl) {
+            return `<span class="source-link source-link-plain" title="${escapeAttr(source.note)}">${escapeHtml(source.label)}</span>`;
+          }
+          return `
+            <a
+              class="source-link"
+              href="${escapeAttr(safeUrl)}"
+              title="${escapeAttr(source.note)}"
+              target="_blank"
+              rel="noopener noreferrer"
+              data-source-link="true"
+            >${escapeHtml(source.label)}</a>
+          `;
+        }).join("");
+        return `<section class="ai-result-section"><h4>参照情報</h4><div class="source-links">${links}</div></section>`;
+      };
+
+      const renderAiReviewSummary = (data, contextLabel = "") => {
+        const summary = data.portfolio_summary || {};
+        const overallView = String(summary.overall_view || "").trim();
+        const portfolioSummary = String(summary.portfolio_summary || "").trim();
+        const primarySummary = overallView || portfolioSummary;
+        const additionalPortfolioSummary = overallView && portfolioSummary !== overallView
+          ? portfolioSummary
+          : "";
+        const criticalWarnings = uniqueAiItems(data.critical_warnings || []);
+        const warnings = uniqueAiItems(data.warnings || [], criticalWarnings);
+        const marketTemperature = ["", "unknown", "-"].includes(String(summary.market_temperature || "").trim())
+          ? ""
+          : summary.market_temperature;
+        const chips = [
+          data.web_search_used ? "Web検索あり" : "Web検索なしの簡易分析",
+          data.mock_response ? "API非呼び出しmock" : "OpenAI API",
+          data.model ? `model ${data.model}` : "",
+          data.reasoning_effort ? `reasoning ${data.reasoning_effort}` : "",
+          data.web_search_policy ? `web policy ${data.web_search_policy}` : "",
+          data.estimated_cost_usd != null ? `今回の事前概算 $${Number(data.estimated_cost_usd || 0).toFixed(4)}` : "",
+          data.actual_usage?.web_search_calls ? `Web検索 ${data.actual_usage.web_search_calls}回` : "",
+          data.cache_hit ? "前回結果" : "",
+          aiHoldingsSourceLabel(data.holdings_source),
+          contextLabel,
+        ].filter(Boolean);
+        return `
+          <article class="ai-review-card ai-review-summary">
+            <div class="meta">
+              <h3 class="ai-card-title">${escapeHtml(aiModeLabel(data.mode))}</h3>
+              <span class="subtle">${escapeHtml(formatDateTime(data.generated_at))}</span>
+            </div>
+            ${renderAiParagraph(primarySummary, "ai-summary-lead")}
+            ${renderAiTextSection("ポートフォリオ総括", additionalPortfolioSummary)}
+            <div class="chips">
+              ${chips.map((chip) => `<span class="chip">${escapeHtml(chip)}</span>`).join("")}
+              ${summary.overall_risk ? `<span class="chip ${summary.overall_risk === "high" ? "warn" : "info"}">risk ${escapeHtml(summary.overall_risk)}</span>` : ""}
+            </div>
+            ${renderAiTextSection("運用スタンス", marketTemperature)}
+            ${renderAiListSection("主要リスク", summary.top_risks || [], "warning")}
+            ${renderAiListSection("今日の優先事項", summary.action_plan_today || [], "action")}
+            ${renderAiListSection("買い候補", summary.buy_candidates || [], "action")}
+            ${renderAiListSection("売却・縮小候補", summary.sell_or_reduce_candidates || [], "warning")}
+            ${renderAiListSection("保有優先", summary.hold_priority || [])}
+            ${renderAiListSection("テーマ偏り", summary.theme_exposure || [])}
+            ${renderAiListSection("毎日見られないなら縮小すべき銘柄", summary.non_monitoring_reduce_candidates || [], "warning")}
+            ${renderAiListSection("コア玉として残せる銘柄", summary.core_position_candidates || [])}
+            ${renderAiListSection("入れ替え候補", summary.exit_or_rotate_candidates || [], "warning")}
+            ${renderAiListSection("具体的な執行案", data.action_plan || [], "action")}
+            ${renderAiListSection("重要警告", criticalWarnings, "warning")}
+            ${renderAiTextSection("資金配分", summary.cash_allocation_view)}
+            ${renderAiTextSection("集中リスク", summary.concentration_risk, "warning")}
+            ${renderAiTextSection("全体反証", summary.invalidation_for_portfolio)}
+            ${renderAiListSection("注意事項", warnings, "warning")}
+            ${renderAiSources(data.sources || [])}
+          </article>
+        `;
       };
 
       const longTermCarryDecisionLabel = (value) => ({
@@ -1346,27 +1646,90 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
           const actions = (item.pre_actions || []).join(" / ") || "事前対応未設定";
           return `${monitoringIntervalLabel(item.interval)}: ${holdabilityLabel(item.holdability)} / 条件: ${conditions} / 事前対応: ${actions}`;
         });
+        const finalDecision = longTermCarryDecisionLabel(check.final_long_term_carry_decision);
+        const finalNote = String(check.final_note || "").trim();
         return `
-          <div class="subtle">中長期持ち越し・非監視期間リスク</div>
-          <div class="chips">
-            <span class="chip ${check.can_hold_without_daily_monitoring === "no" ? "warn" : "info"}">毎日見られない前提: ${escapeHtml(dailyMonitoringHoldLabel(check.can_hold_without_daily_monitoring))}</span>
-            <span class="chip ${check.non_monitoring_hold_risk === "high" ? "warn" : ""}">非監視期間リスク ${escapeHtml(riskLevelLabel(stock.non_monitoring_hold_risk || check.non_monitoring_hold_risk))}</span>
-            <span class="chip">事業仮説 ${escapeHtml(riskLevelLabel(check.business_thesis_strength))}</span>
-            <span class="chip ${check.event_risk_while_unmonitored === "high" ? "warn" : ""}">イベント ${escapeHtml(riskLevelLabel(check.event_risk_while_unmonitored))}</span>
-            <span class="chip">流動性 ${escapeHtml(riskLevelLabel(check.liquidity_risk))}</span>
-            <span class="chip">ボラ ${escapeHtml(riskLevelLabel(check.volatility_risk))}</span>
-            <span class="chip">コア玉適性 ${escapeHtml(riskLevelLabel(check.core_position_suitability))}</span>
-            <span class="chip">短期玉を外す ${escapeHtml(nullableBooleanLabel(check.short_term_position_should_be_removed))}</span>
-          </div>
-          ${check.position_size_view ? `<p>${escapeHtml(check.position_size_view)}</p>` : ""}
-          ${check.required_alerts?.length ? `<div class="subtle">必要なアラート</div>${renderCompactList(check.required_alerts)}` : ""}
-          ${check.must_check_dates_or_events?.length ? `<div class="subtle">必ず確認すべき日付・イベント</div>${renderCompactList(check.must_check_dates_or_events)}` : ""}
-          ${check.reduce_before_events?.length ? `<div class="subtle">事前に縮小すべきイベント</div>${renderCompactList(check.reduce_before_events)}` : ""}
-          ${check.stop_or_reduce_conditions?.length ? `<div class="subtle">縮小・停止条件</div>${renderCompactList(check.stop_or_reduce_conditions)}` : ""}
-          ${check.long_term_thesis_break_conditions?.length ? `<div class="subtle">中長期仮説が崩れる条件</div>${renderCompactList(check.long_term_thesis_break_conditions)}` : ""}
-          ${intervalRows.length ? `<div class="subtle">期間別の保有可否</div>${renderCompactList(intervalRows)}` : ""}
-          <div class="subtle">最終中長期持ち越し判断</div>
-          <p>${escapeHtml(longTermCarryDecisionLabel(check.final_long_term_carry_decision))}${check.final_note ? `：${escapeHtml(check.final_note)}` : ""}</p>
+          <section class="ai-result-section">
+            <h4>中長期持ち越し・非監視期間リスク</h4>
+            <div class="chips">
+              <span class="chip ${check.can_hold_without_daily_monitoring === "no" ? "warn" : "info"}">毎日見られない前提: ${escapeHtml(dailyMonitoringHoldLabel(check.can_hold_without_daily_monitoring))}</span>
+              <span class="chip ${check.non_monitoring_hold_risk === "high" ? "warn" : ""}">非監視期間リスク ${escapeHtml(riskLevelLabel(stock.non_monitoring_hold_risk || check.non_monitoring_hold_risk))}</span>
+              <span class="chip">事業仮説 ${escapeHtml(riskLevelLabel(check.business_thesis_strength))}</span>
+              <span class="chip ${check.event_risk_while_unmonitored === "high" ? "warn" : ""}">イベント ${escapeHtml(riskLevelLabel(check.event_risk_while_unmonitored))}</span>
+              <span class="chip">流動性 ${escapeHtml(riskLevelLabel(check.liquidity_risk))}</span>
+              <span class="chip">ボラ ${escapeHtml(riskLevelLabel(check.volatility_risk))}</span>
+              <span class="chip">コア玉適性 ${escapeHtml(riskLevelLabel(check.core_position_suitability))}</span>
+              <span class="chip">短期玉を外す ${escapeHtml(nullableBooleanLabel(check.short_term_position_should_be_removed))}</span>
+            </div>
+            ${renderAiSubText("ポジションサイズ", check.position_size_view)}
+            ${renderAiSubList("必要なアラート", check.required_alerts || [])}
+            ${renderAiSubList("必ず確認すべき日付・イベント", check.must_check_dates_or_events || [])}
+            ${renderAiSubList("事前に縮小すべきイベント", check.reduce_before_events || [])}
+            ${renderAiSubList("縮小・停止条件", check.stop_or_reduce_conditions || [])}
+            ${renderAiSubList("中長期仮説が崩れる条件", check.long_term_thesis_break_conditions || [])}
+            ${renderAiSubList("期間別の保有可否", intervalRows)}
+            ${renderAiSubText("最終中長期持ち越し判断", finalNote ? `${finalDecision}：${finalNote}` : finalDecision)}
+          </section>
+        `;
+      };
+
+      const renderAiStockCard = (stock) => {
+        const timeHorizonViews = Object.entries(stock.time_horizon_views || {}).map(([key, value]) => {
+          const view = String(value ?? "").trim();
+          return view ? `${key}: ${view}` : "";
+        });
+        const todayPoints = [...(stock.key_points || []), ...(stock.watch_points || [])];
+        const verificationLabels = uniqueAiItems(stock.verification_labels || []);
+        return `
+          <article class="ai-review-card">
+            <div class="meta">
+              <div>
+                <h3 class="ai-card-title">${renderAiText(stock.name)}</h3>
+                <div class="subtle">${escapeHtml(publicSecurityCode(stock.ticker))}</div>
+              </div>
+              <span class="judgement-badge ${escapeAttr(stock.judgement)}">${renderAiText(stock.judgement_label || aiJudgementLabel(stock.judgement))}</span>
+            </div>
+            <div class="chips">
+              <span class="chip">${renderAiText(stock.judgement)}</span>
+              <span class="chip info">confidence ${escapeHtml(formatNumber(Number(stock.confidence || 0) * 100, 0))}%</span>
+              ${stock.needs_detail_analysis ? '<span class="chip warn">詳細分析候補</span>' : ""}
+              ${stock.needs_analyst_mode ? '<span class="chip warn">analyst推奨</span>' : ""}
+              ${stock.needs_judge_mode ? '<span class="chip warn">judge推奨</span>' : ""}
+              ${longTermCarryWarningChip(stock)}
+              ${verificationLabels.map((label) => `<span class="chip">${renderAiText(label)}</span>`).join("")}
+            </div>
+            ${renderAiListSection("時間軸別判断", timeHorizonViews)}
+            ${renderAiTextSection("短評", stock.short_reason)}
+            ${renderAiListSection("主要リスク", stock.key_risks || [], "warning")}
+            ${renderAiListSection("今日見るべきポイント", todayPoints, "action")}
+            ${renderAiListSection("警戒フラグ", stock.risk_flags || [], "warning")}
+            ${renderLongTermCarrySection(stock)}
+            ${renderAiTextSection("テクニカル所見", stock.technical_view)}
+            ${renderAiTextSection("材料・ニュース所見", stock.news_view)}
+            ${renderAiTextSection("地合い", stock.market_context_view)}
+            ${renderAiTextSection("需給", stock.supply_demand_view)}
+            ${renderAiTextSection("保有者向けアクション", stock.holder_action, "action")}
+            ${renderAiTextSection("買増し条件", stock.buy_more_condition, "action")}
+            ${renderAiTextSection("利確条件", stock.take_profit_condition, "action")}
+            ${renderAiTextSection("縮小・撤退条件", stock.stop_or_reduce_condition, "warning")}
+            ${renderAiTextSection("反証条件", stock.invalidation)}
+            ${renderAiListSection("次に見る価格帯", stock.next_price_levels || [])}
+            ${renderAiTextSection("強気シナリオ", stock.bullish_case)}
+            ${renderAiTextSection("弱気シナリオ", stock.bearish_case, "warning")}
+            ${renderAiTextSection("中立シナリオ", stock.base_case)}
+            ${renderAiTextSection("期待値", stock.expected_value_view)}
+            ${renderAiTextSection("ポジションサイズ", stock.position_size_risk, "warning")}
+            ${renderAiTextSection("イベントリスク", stock.event_risk, "warning")}
+            ${renderAiTextSection("ギャップリスク", stock.gap_risk, "warning")}
+            ${renderAiTextSection("判断期限", stock.decision_deadline)}
+            ${renderAiTextSection("見立て変更条件", stock.what_would_change_my_mind)}
+            ${renderAiTextSection("保有者向け最終整理", stock.final_recommendation_for_holder)}
+            ${renderAiTextSection("不確実性", stock.uncertainty_notes, "warning")}
+            ${renderAiListSection("具体的な執行案", stock.execution_plan || [], "action")}
+            ${renderAiListSection("辛口チェック", stock.critical_check || [], "warning")}
+            ${renderAiListSection("リスク", stock.risks || [], "warning")}
+            ${renderAiSources(stock.sources || [])}
+          </article>
         `;
       };
 
@@ -1583,6 +1946,7 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
       const renderPortfolioAiReview = () => {
         const feedback = document.getElementById("portfolio-ai-review-feedback");
         const review = state.portfolioAiReview;
+        setAiResultBusy("portfolio-ai-review-results", review.status === "loading");
         if (feedback) {
           const tone = ["missing_api_key", "json_parse_failed", "openai_api_error", "openai_sdk_missing", "no_holdings", "target_limit_exceeded", "daily_limit_exceeded", "failed"].includes(review.status)
             ? "error"
@@ -1615,16 +1979,14 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
         syncStockAiPrompt(data.manual_prompt || "");
         const status = data.status || "success";
         if (status !== "success") {
-          const rawOutput = data.raw_model_output
-            ? `<div class="subtle" style="margin-top: 10px;">OpenAI生応答</div><pre class="empty">${escapeHtml(String(data.raw_model_output).slice(0, 20000))}</pre>`
-            : "";
+          const rawOutput = renderAiRawFallback(data.raw_model_output);
           fill("portfolio-ai-review-results", `
             <article class="ai-review-card error">
               <div class="meta">
-                <strong>${escapeHtml(aiReviewResultStatusLabel(data))}</strong>
+                <h3 class="ai-card-title">${escapeHtml(aiReviewResultStatusLabel(data))}</h3>
                 <span class="chip warn">${escapeHtml(aiHoldingsSourceLabel(data.holdings_source))}</span>
               </div>
-              <p>${escapeHtml(data.error?.message || data.portfolio_summary?.overall_view || "分析できませんでした。")}</p>
+              ${renderAiParagraph(data.error?.message || data.portfolio_summary?.overall_view || "分析できませんでした。")}
               ${rawOutput}
             </article>
           `);
@@ -1632,98 +1994,10 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
           return;
         }
 
-        const summary = data.portfolio_summary || {};
-        const chips = [
-          data.mode ? aiModeLabel(data.mode) : "",
-          data.web_search_used ? "Web検索あり" : "Web検索なしの簡易分析",
-          data.mock_response ? "API非呼び出しmock" : "OpenAI API",
-          data.model ? `model ${data.model}` : "",
-          data.reasoning_effort ? `reasoning ${data.reasoning_effort}` : "",
-          data.web_search_policy ? `web policy ${data.web_search_policy}` : "",
-          data.estimated_cost_usd != null ? `今回の事前概算 $${Number(data.estimated_cost_usd || 0).toFixed(4)}` : "",
-          data.actual_usage?.web_search_calls ? `Web検索 ${data.actual_usage.web_search_calls}回` : "",
-          data.cache_hit ? "前回結果" : "",
-          aiHoldingsSourceLabel(data.holdings_source),
-        ].filter(Boolean);
-        const stockCards = (data.stocks || []).map((stock) => `
-          <article class="ai-review-card">
-            <div class="meta">
-              <div>
-                <strong>${escapeHtml(stock.name)}</strong>
-                <div class="subtle">${escapeHtml(publicSecurityCode(stock.ticker))}</div>
-              </div>
-              <span class="judgement-badge ${escapeAttr(stock.judgement)}">${escapeHtml(stock.judgement_label || aiJudgementLabel(stock.judgement))}</span>
-            </div>
-            <div class="chips">
-              <span class="chip">${escapeHtml(stock.judgement)}</span>
-              <span class="chip info">confidence ${escapeHtml(formatNumber(Number(stock.confidence || 0) * 100, 0))}%</span>
-              ${stock.needs_detail_analysis ? '<span class="chip warn">詳細分析候補</span>' : ""}
-              ${stock.needs_analyst_mode ? '<span class="chip warn">analyst推奨</span>' : ""}
-              ${stock.needs_judge_mode ? '<span class="chip warn">judge推奨</span>' : ""}
-              ${longTermCarryWarningChip(stock)}
-              ${(stock.verification_labels || []).map((label) => `<span class="chip">${escapeHtml(label)}</span>`).join("")}
-            </div>
-            ${stock.time_horizon_views && Object.keys(stock.time_horizon_views).length ? `<div class="subtle">時間軸別判断</div>${renderCompactList(Object.entries(stock.time_horizon_views).map(([key, value]) => `${key}: ${value}`))}` : ""}
-            ${stock.short_reason ? `<div class="subtle">短評</div><p>${escapeHtml(stock.short_reason)}</p>` : ""}
-            ${stock.key_risks?.length ? `<div class="subtle">主要リスク</div>${renderCompactList(stock.key_risks)}` : ""}
-            <div class="subtle">今日見るべきポイント</div>
-            ${renderCompactList([...(stock.key_points || []), ...(stock.watch_points || [])])}
-            ${stock.risk_flags?.length ? `<div class="subtle">警戒フラグ</div>${renderCompactList(stock.risk_flags)}` : ""}
-            ${renderLongTermCarrySection(stock)}
-            ${stock.technical_view ? `<div class="subtle">テクニカル所見</div><p>${escapeHtml(stock.technical_view)}</p>` : ""}
-            ${stock.news_view ? `<div class="subtle">材料・ニュース所見</div><p>${escapeHtml(stock.news_view)}</p>` : ""}
-            ${stock.market_context_view ? `<div class="subtle">地合い</div><p>${escapeHtml(stock.market_context_view)}</p>` : ""}
-            ${stock.supply_demand_view ? `<div class="subtle">需給</div><p>${escapeHtml(stock.supply_demand_view)}</p>` : ""}
-            ${stock.holder_action ? `<div class="subtle">保有者向けアクション</div><p>${escapeHtml(stock.holder_action)}</p>` : ""}
-            ${stock.buy_more_condition ? `<div class="subtle">買増し条件</div><p>${escapeHtml(stock.buy_more_condition)}</p>` : ""}
-            ${stock.take_profit_condition ? `<div class="subtle">利確条件</div><p>${escapeHtml(stock.take_profit_condition)}</p>` : ""}
-            ${stock.stop_or_reduce_condition ? `<div class="subtle">縮小・撤退条件</div><p>${escapeHtml(stock.stop_or_reduce_condition)}</p>` : ""}
-            ${stock.invalidation ? `<div class="subtle">反証条件</div><p>${escapeHtml(stock.invalidation)}</p>` : ""}
-            ${stock.next_price_levels?.length ? `<div class="subtle">次に見る価格帯</div>${renderCompactList(stock.next_price_levels)}` : ""}
-            ${stock.bullish_case ? `<div class="subtle">強気シナリオ</div><p>${escapeHtml(stock.bullish_case)}</p>` : ""}
-            ${stock.bearish_case ? `<div class="subtle">弱気シナリオ</div><p>${escapeHtml(stock.bearish_case)}</p>` : ""}
-            ${stock.base_case ? `<div class="subtle">中立シナリオ</div><p>${escapeHtml(stock.base_case)}</p>` : ""}
-            ${stock.expected_value_view ? `<div class="subtle">期待値</div><p>${escapeHtml(stock.expected_value_view)}</p>` : ""}
-            ${stock.position_size_risk ? `<div class="subtle">ポジションサイズ</div><p>${escapeHtml(stock.position_size_risk)}</p>` : ""}
-            ${stock.event_risk ? `<div class="subtle">イベントリスク</div><p>${escapeHtml(stock.event_risk)}</p>` : ""}
-            ${stock.gap_risk ? `<div class="subtle">ギャップリスク</div><p>${escapeHtml(stock.gap_risk)}</p>` : ""}
-            ${stock.decision_deadline ? `<div class="subtle">判断期限</div><p>${escapeHtml(stock.decision_deadline)}</p>` : ""}
-            ${stock.what_would_change_my_mind ? `<div class="subtle">見立て変更条件</div><p>${escapeHtml(stock.what_would_change_my_mind)}</p>` : ""}
-            ${stock.final_recommendation_for_holder ? `<div class="subtle">保有者向け最終整理</div><p>${escapeHtml(stock.final_recommendation_for_holder)}</p>` : ""}
-            ${stock.uncertainty_notes ? `<div class="subtle">不確実性</div><p>${escapeHtml(stock.uncertainty_notes)}</p>` : ""}
-            ${stock.execution_plan?.length ? `<div class="subtle">具体的な執行案</div>${renderCompactList(stock.execution_plan)}` : ""}
-            ${stock.critical_check?.length ? `<div class="subtle">辛口チェック</div>${renderCompactList(stock.critical_check)}` : ""}
-            ${(stock.risks || []).length ? `<div class="subtle">リスク</div>${renderCompactList(stock.risks || [])}` : ""}
-            ${renderAiSources(stock.sources || [])}
-          </article>
-        `).join("");
+        const stockCards = (data.stocks || []).map(renderAiStockCard).join("");
 
         fill("portfolio-ai-review-results", `
-          <article class="ai-review-card ai-review-summary">
-            <div class="meta">
-              <strong>${escapeHtml(aiModeLabel(data.mode))}</strong>
-              <span class="subtle">${escapeHtml(formatDateTime(data.generated_at))}</span>
-            </div>
-            <p>${escapeHtml(summary.overall_view || summary.portfolio_summary || "")}</p>
-            <div class="chips">
-              ${chips.map((chip) => `<span class="chip">${escapeHtml(chip)}</span>`).join("")}
-              <span class="chip ${summary.overall_risk === "high" ? "warn" : "info"}">risk ${escapeHtml(summary.overall_risk || "-")}</span>
-              <span class="chip">${escapeHtml(summary.market_temperature || "-")}</span>
-            </div>
-            ${renderCompactList(summary.top_risks || [])}
-            ${renderCompactList(summary.action_plan_today || [])}
-            ${summary.non_monitoring_reduce_candidates?.length ? `<div class="subtle">毎日見られないなら縮小すべき銘柄</div>${renderCompactList(summary.non_monitoring_reduce_candidates)}` : ""}
-            ${summary.core_position_candidates?.length ? `<div class="subtle">コア玉として残せる銘柄</div>${renderCompactList(summary.core_position_candidates)}` : ""}
-            ${summary.exit_or_rotate_candidates?.length ? `<div class="subtle">入れ替え候補</div>${renderCompactList(summary.exit_or_rotate_candidates)}` : ""}
-            ${data.action_plan?.length ? `<div class="subtle">具体的な執行案</div>${renderCompactList(data.action_plan)}` : ""}
-            ${data.critical_warnings?.length ? `<div class="subtle">重要警告</div>${renderCompactList(data.critical_warnings)}` : ""}
-            ${summary.cash_allocation_view ? `<div class="subtle">資金配分</div><p>${escapeHtml(summary.cash_allocation_view)}</p>` : ""}
-            ${summary.concentration_risk ? `<div class="subtle">集中リスク</div><p>${escapeHtml(summary.concentration_risk)}</p>` : ""}
-            ${summary.invalidation_for_portfolio ? `<div class="subtle">全体の反証条件</div><p>${escapeHtml(summary.invalidation_for_portfolio)}</p>` : ""}
-            ${data.warnings?.length ? `<div class="subtle">警告</div>${renderCompactList(data.warnings)}` : ""}
-            ${data.raw_model_output ? `<div class="subtle">OpenAI生応答</div><pre class="empty">${escapeHtml(String(data.raw_model_output).slice(0, 20000))}</pre>` : ""}
-            ${renderAiSources(data.sources || [])}
-          </article>
+          ${renderAiReviewSummary(data)}
           ${stockCards}
         `);
         updateStockAiCost();
@@ -1804,6 +2078,7 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
       const renderWatchlistAiReview = () => {
         const feedback = document.getElementById("watchlist-ai-review-feedback");
         const review = state.watchlistAiReview;
+        setAiResultBusy("watchlist-ai-review-results", review.status === "loading");
         if (feedback) {
           const tone = ["missing_api_key", "json_parse_failed", "openai_api_error", "openai_sdk_missing", "no_holdings", "failed"].includes(review.status)
             ? "error"
@@ -1834,78 +2109,24 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
         }
         const status = data.status || "success";
         if (status !== "success") {
-          const rawOutput = data.raw_model_output
-            ? `<div class="subtle" style="margin-top: 10px;">raw_model_output</div><pre class="empty">${escapeHtml(String(data.raw_model_output).slice(0, 1200))}</pre>`
-            : "";
+          const rawOutput = renderAiRawFallback(data.raw_model_output);
           fill("watchlist-ai-review-results", `
             <article class="ai-review-card error">
               <div class="meta">
-                <strong>${escapeHtml(aiReviewResultStatusLabel(data))}</strong>
+                <h3 class="ai-card-title">${escapeHtml(aiReviewResultStatusLabel(data))}</h3>
                 <span class="chip warn">${escapeHtml(aiHoldingsSourceLabel(data.holdings_source))}</span>
               </div>
-              <p>${escapeHtml(data.error?.message || data.portfolio_summary?.overall_view || "分析できませんでした。")}</p>
+              ${renderAiParagraph(data.error?.message || data.portfolio_summary?.overall_view || "分析できませんでした。")}
               ${rawOutput}
             </article>
           `);
           return;
         }
 
-        const summary = data.portfolio_summary || {};
-        const chips = [
-          data.web_search_used ? "Web検索あり" : "Web検索なしの簡易分析",
-          data.mock_response ? "API非呼び出しmock" : "OpenAI API",
-          data.model ? `model ${data.model}` : "",
-          data.reasoning_effort ? `reasoning ${data.reasoning_effort}` : "",
-          data.estimated_cost_usd != null ? `今回の事前概算 $${Number(data.estimated_cost_usd || 0).toFixed(4)}` : "",
-          data.actual_usage?.web_search_calls ? `Web検索 ${data.actual_usage.web_search_calls}回` : "",
-          aiHoldingsSourceLabel(data.holdings_source),
-          "選択ウォッチリスト",
-        ].filter(Boolean);
-        const stockCards = (data.stocks || []).map((stock) => `
-          <article class="ai-review-card">
-            <div class="meta">
-              <div>
-                <strong>${escapeHtml(stock.name)}</strong>
-                <div class="subtle">${escapeHtml(publicSecurityCode(stock.ticker))}</div>
-              </div>
-              <span class="judgement-badge ${escapeAttr(stock.judgement)}">${escapeHtml(stock.judgement_label || aiJudgementLabel(stock.judgement))}</span>
-            </div>
-            <div class="chips">
-              <span class="chip">${escapeHtml(stock.judgement)}</span>
-              <span class="chip info">confidence ${escapeHtml(formatNumber(Number(stock.confidence || 0) * 100, 0))}%</span>
-              ${longTermCarryWarningChip(stock)}
-            </div>
-            <div class="subtle">今日見るべきポイント</div>
-            ${renderCompactList(stock.key_points || [])}
-            ${renderLongTermCarrySection(stock)}
-            <div class="subtle">テクニカル所見</div>
-            <p>${escapeHtml(stock.technical_view)}</p>
-            <div class="subtle">材料・ニュース所見</div>
-            <p>${escapeHtml(stock.news_view)}</p>
-            <div class="subtle">保有者向けアクション</div>
-            <p>${escapeHtml(stock.holder_action)}</p>
-            <div class="subtle">反証条件</div>
-            <p>${escapeHtml(stock.invalidation)}</p>
-            <div class="subtle">リスク</div>
-            ${renderCompactList(stock.risks || [])}
-            ${renderAiSources(stock.sources || [])}
-          </article>
-        `).join("");
+        const stockCards = (data.stocks || []).map(renderAiStockCard).join("");
 
         fill("watchlist-ai-review-results", `
-          <article class="ai-review-card ai-review-summary">
-            <div class="meta">
-              <strong>Watchlist AI Review</strong>
-              <span class="subtle">${escapeHtml(formatDateTime(data.generated_at))}</span>
-            </div>
-            <p>${escapeHtml(summary.overall_view || "")}</p>
-            <div class="chips">
-              ${chips.map((chip) => `<span class="chip">${escapeHtml(chip)}</span>`).join("")}
-              <span class="chip ${summary.overall_risk === "high" ? "warn" : "info"}">risk ${escapeHtml(summary.overall_risk || "-")}</span>
-              <span class="chip">${escapeHtml(summary.market_temperature || "-")}</span>
-            </div>
-            ${renderCompactList(summary.top_risks || [])}
-          </article>
+          ${renderAiReviewSummary(data, "選択ウォッチリスト")}
           ${stockCards}
         `);
       };
