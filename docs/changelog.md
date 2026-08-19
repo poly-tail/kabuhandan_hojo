@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-08-19 legacy AI current-result large reader
+
+- dashboardのlegacy Portfolio / Watchlist AI結果へ`回答を別タブ／ウィンドウで大きく表示`action linkを追加する画面契約を定義した。`status=success`（`prompt_only`除外）または非空`raw_model_output`を持つ`json_parse_failed`だけを対象とし、idle、loading、通信失敗、生応答なしerrorでは表示しない。
+- 現在描画したbrowser stateをclient-onlyのHTML Blob snapshotへ変換し、新しいtabまたはwindowで表示する。successは既存のsummary / stock / list / callout / source共通rendererを再利用し、parse失敗は赤いerror表示とescape済みplain raw outputを維持する。
+- Blob readerへrestrictive Content Security Policyを付け、script、外部resource、formを含めない。action linkは`target="_blank"`と`rel="noopener noreferrer"`で親画面へのopener参照を渡さず、動的textのescape、`http:` / `https:` source allowlist、根拠badge、銘柄名・公開code表示を既存画面と共通化する。
+- action linkの準備・openではAPI、DB、legacy JSON history/cache、Web Storage、OpenAI Responses APIを呼ばず、quota、provider call、token、Web検索、概算額を増やさない。mock、cache hit、`save_result=false`でも現在の表示条件を満たせば利用できる。
+- Blob snapshotは一時表示であり、恒久URL、bookmark、reload、閉じた後の復元、別端末共有を保証しない。browser policyで新規contextを開けない場合も元画面の回答は維持されるが、block検出や専用feedbackは保証しない。
+- canonical `/ui/analysis/results/{request_id}`の保存済みSQL reader、API schema、model/reasoning、active prompt v2026.08.18を変更していない。要件v1.9とAPI v2.2を維持し、画面v2.6と`SC-2026-08-19-04`だけを追加した。
+
 ## 2026-08-19 legacy AI structured response presentation
 
 - legacy stock-reviewの成功responseはMarkdown本文ではなくStructured Outputs JSONであることを明確にし、既知fieldをsummary、risk、action、candidate、warning、portfolio補足、stock detail、sourceのsemanticな見出し、list、calloutへ対応付ける画面契約を追加した。

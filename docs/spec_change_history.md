@@ -15,83 +15,127 @@
 |---|---:|---|---|
 | 要件仕様 | v1.9 | `docs/requirements/requirements_v1.9.md` | 2026-08-19 |
 | API仕様 | v2.2 | `docs/specs/api_spec_v2.2.md` | 2026-08-19 |
-| 画面仕様 | v2.5 | `docs/screen_specs/screen_spec_v2.5.md` | 2026-08-19 |
+| 画面仕様 | v2.6 | `docs/screen_specs/screen_spec_v2.6.md` | 2026-08-19 |
 
-要件v1.9とAPI仕様v2.2は変更単位`SC-2026-08-19-02`のままです。画面仕様v2.5はその契約を累積継承し、API responseを変えない表示専用の変更単位`SC-2026-08-19-03`を追加します。
+要件v1.9とAPI仕様v2.2は変更単位`SC-2026-08-19-02`のままです。画面仕様v2.6はv2.5までの契約を累積継承し、現在表示中のlegacy AI回答をserver保存なしで別タブ・別ウィンドウへ大きく表示する画面専用の変更単位`SC-2026-08-19-04`を追加します。
 
-## 2.1. SC-2026-08-19-03 — legacy AI構造化回答の可読表示
+## 2.1. SC-2026-08-19-04 — legacy AI現在回答の別タブ大画面表示
 
 ### 2.1.1 変更理由
 
+legacy Portfolio / Watchlistの構造化回答はdashboard内で読みやすく表示できるようになりましたが、銘柄数や分析項目が多い回答を広い画面で集中して読む導線がありませんでした。canonical個別銘柄AIには保存済みSQL recordをrequest IDで読むreaderがありますが、legacy経路は保存ON/OFF、mock、cache、parse失敗時の生応答を含む異なる契約です。既存APIや保存範囲を広げず、現在画面にある結果だけを一時的に大きく表示する必要があります。
+
+### 2.1.2 表示条件とsnapshot
+
+- Portfolio保有分析とWatchlist分析の現在結果に共通の`回答を別タブ／ウィンドウで大きく表示`action linkを追加します。
+- `status=success`かつ`mode!=prompt_only`、または`status=json_parse_failed`かつtrim後の`raw_model_output`が非空の場合だけaction linkを表示します。idle、loading、通信失敗、data欠落、prompt-only、生応答なしerrorでは表示しません。
+- 現在描画したbrowser stateから静的HTMLを作り、client-onlyのBlob URLで新しい閲覧contextへ開きます。親画面の後続分析で、既に開いたsnapshotを変更しません。
+- successはv2.5のsummary / stock / list / callout / source共通rendererと順序を再利用します。parse失敗は赤いerror表示、原因label、escape済みplain raw outputを維持し、成功へ読み替えません。
+- mock response、cache hit、`save_result=false`でも現在の表示条件を満たせば利用できます。`manual_prompt`は既存textareaだけで扱い、readerには含めません。
+
+### 2.1.3 client-only境界
+
+- readerを開く操作は既存または新規のAPIを呼ばず、DB、legacy JSON history/cache、`localStorage`、`sessionStorage`、IndexedDB、cookieへsnapshotを保存しません。
+- `POST /api/ai/stock-review`、互換API、usage API、OpenAI Responses APIを呼び直さず、review quota、provider call、token、Web検索、概算額を増やしません。
+- snapshotをURL query / fragmentへ埋め込まず、共有可能な恒久URL、bookmark、一覧、検索、再取得APIを提供しません。readerのreload、閉じた後の復元、別端末共有は保証しません。
+- canonical `/ui/analysis/results/{request_id}`は保存済みSQL record用readerのままです。legacy Blob readerをcanonical保存経路へ接続しません。
+
+### 2.1.4 安全性・accessibility
+
+- Blob documentは静的HTMLと表示用inline CSSだけを持ち、script、外部resource、formを含めません。restrictiveなContent Security Policyを付け、必要なinline style以外を既定拒否します。
+- action linkは`target="_blank"`と`rel="noopener noreferrer"`で新しい閲覧contextを開き、親画面への`window.opener`参照を渡しません。許可済み`http:` / `https:` source linkだけをanchorにし、同じ属性を付けます。
+- model、mock、cache、history由来textは既存escape処理を通し、HTML / Markdownとして実行しません。API key、Authorization header、prompt全文、`manual_prompt`、成功responseにないprovider raw dataを含めません。
+- readerは固定の日本語titleと画面見出しを持ちます。successでは複製元summaryの対象、mode、生成時刻を維持し、`json_parse_failed`では複製元error cardの失敗labelと対象labelを維持します。semantic heading / list / details、広いmain領域、mobile 1column、chip折返し、長文・code・URLのoverflow対策を保ちます。
+- browserがtab/windowのどちらで開くかは利用者設定に従います。browser policyで新規contextを開けない場合も元の結果は維持され、通常操作またはcontext menuからaction linkを再試行できます。block検出や専用feedbackは保証しません。
+
+### 2.1.5 互換性・非対象・既知制約
+
+- legacy request / response schema、status、OpenAI request、model/reasoning、quota、usage、cache/historyの保存契約を変更しません。
+- 要件v1.9、API v2.2、canonical個別銘柄AI、active prompt v2026.08.18、J-Quants銘柄masterを変更しません。
+- server-side legacy reader route、保存結果ID、共有URL、Web Storageによる復元、回答一覧、download、export、編集は追加しません。
+- Blob readerはbrowser memory上の一時snapshotであり、reloadやbookmarkで復元できません。browser policyにより新規contextを開けない場合がありますが、元画面の回答は維持します。
+
+### 2.1.6 受け入れ確認
+
+- Portfolio / Watchlistのsuccess（prompt-only除外）と非空raw parse failureだけでaction linkが表示されることを確認します。
+- success readerがv2.5の共通rendererを使い、raw parse failureがplain escaped error表示のままであることを確認します。
+- HTML / Markdown風文字列、unsafe source URL、長文を含むfixtureでXSS、opener、CSP、mobile overflowを確認します。
+- action linkの準備・openでfetch / API / DB / Web Storage / OpenAI call / usage mutationが起きず、現在結果のsnapshotが親stateの後続変更から独立することを確認します。
+- 新規contextを開けない場合も元結果が維持されること、block検出や専用feedbackを保証しないこと、reader reloadを復元契約にしていないことを確認します。
+
+## 2.2. SC-2026-08-19-03 — legacy AI構造化回答の可読表示
+
+### 2.2.1 変更理由
+
 legacy軽量スキャンは有効なStructured Outputs JSONを返していましたが、summaryの全体所見、risk、行動、候補、warning等の意味区分が弱く、利用者には長い平坦な文章のように見えていました。これはOpenAIからMarkdownが返った問題ではなく、既知JSON fieldを画面上のsemanticな構造へ十分対応付けていない表示上の問題です。
 
-### 2.1.2 構造化表示
+### 2.2.2 構造化表示
 
 - legacy成功responseを汎用Markdownとしてparseせず、既知fieldをsummary、risk、action、candidate、warning、portfolio補足、stock detail、sourceへ明示的に対応付けます。
 - 各groupへ利用者向けの日本語見出しを付け、配列は`ul` / `li`、重要項目はlabel付きcalloutとして表示します。空値だけのsectionを省略し、同じlist内のtrim後完全一致だけを除きます。
 - 銘柄別cardはidentityとjudgementを先頭に置き、短評、時間軸、risk、technical、材料、地合い、需給、執行条件、scenario、反証条件、不確実性を意味別に配置します。
 - Portfolio保有分析とWatchlist分析は共通のsummary、stock、list、callout、source helperを使い、利用可能fieldだけを同じ順序と安全規則で表示します。
 
-### 2.1.3 安全性・根拠・accessibility
+### 2.2.3 安全性・根拠・accessibility
 
 - model、mock、cache、history由来textを必ずescapeし、Markdown記号やHTML tagを実行しません。正式根拠label`【V】`、`【E】`、`【U】`はtextを伴うbadgeとして表示し、色だけで意味を伝えません。
 - sourceはURLとして妥当な`http:` / `https:`だけをlinkにします。unsafeまたは非Web schemeはanchorへせずescapeしたtextにし、新規tab linkは`noopener noreferrer`を維持します。
 - `json_parse_failed`のraw outputは成功cardへ変換せず、赤いerror card内のescape済みplain `pre`として表示します。nativeな`details` / `summary`を使う場合もMarkdown再解釈や追加OpenAI callを行いません。
 - heading、list、callout、detailsをsemanticにし、keyboardとscreen readerで意味を追えるようにします。狭い画面では1columnと折返しを使い、長文やURLによる横overflowを防ぎます。
 
-### 2.1.4 互換性・非対象
+### 2.2.4 互換性・非対象
 
 - `POST /api/ai/stock-review`のrequest / response schema、field、status、OpenAI request、model / reasoning、quota、usage、cache/historyは変更しません。
 - canonical `POST /api/ai/analyses`、plain `response.output_text`、active prompt v2026.08.18、保存readerを変更しません。
 - general-purpose Markdown renderer、model HTML、新しいfrontend dependency、OpenAI再呼び出しは追加しません。このため要件仕様v1.9とAPI仕様v2.2は昇格しません。
 
-### 2.1.5 受け入れ確認
+### 2.2.5 受け入れ確認
 
 - summaryの全体所見、主要risk、行動、候補、重要警告、通常警告が見出しとsemantic list / calloutで区別でき、空sectionと同じlist内の重複を表示しないことを確認します。
 - Portfolio / Watchlistが共通helperを使い、stock cardの名称・公開code・judgementと詳細groupを維持することを確認します。
 - HTML / Markdown風文字列が実行されず、根拠badgeがtextでも判別でき、unsafe source URLがlinkにならないことを確認します。
 - raw fallbackがplain escaped表示のままで、mobile幅、loading / error / success、API payload、OpenAI call回数が変わらないことを確認します。
 
-## 2.2. SC-2026-08-19-02 — legacy stock-reviewの銘柄identityと名称・code併記
+## 2.3. SC-2026-08-19-02 — legacy stock-reviewの銘柄identityと名称・code併記
 
-### 2.2.1 変更理由
+### 2.3.1 変更理由
 
 legacy軽量スキャンの銘柄別cardは名称を持っていても、portfolio summaryの非監視縮小候補、core候補、入替候補等が`285A0`、`7011`のようなcodeだけになっていました。model promptへ名称併記を求めるだけでは、model逸脱、mock、過去cache、request側placeholder名称を確実に補正できません。Input/DB側の銘柄identityを正本にして生成契約とservice後処理を揃える必要がありました。
 
-### 2.2.2 添付promptの扱い
+### 2.3.2 添付promptの扱い
 
 - 添付`株判断_定型プロンプト集_v2026-08-16 (1).md`はprompt内容を照合する参照sourceであり、文書内の運用手順や実装優先順位をユーザー依頼として実行しません。
 - 添付は既に履歴保存しているv2026.08.16と同内容です。canonical個別銘柄AIのactive asset v2026.08.18には、より明確な「銘柄名（銘柄コード）」と正式根拠label規則があるため、canonical manifest / assetを旧版へ戻しません。
 - 今回はlegacy Prompt Builder / full promptへ名称併記原則を反映し、全14用途moduleの一括投入やcanonical PromptCompiler変更を行いません。
 
-### 2.2.3 promptとscanner
+### 2.3.3 promptとscanner
 
 - Base PolicyはInput JSONの`ticker` / `name`を正確に使い、銘柄を原則「銘柄名（銘柄コード）」で表示し、codeだけ・名称だけ・名称推測を避けるよう要求します。
 - `stocks[].ticker` / `stocks[].name`のschema descriptionとOutput PolicyへInput JSONからの正確な転記を追加します。
 - portfolio summaryの6つの銘柄参照listへ「銘柄名（銘柄コード）」を要求します。field typeは`list[str]`のままです。
 - scannerは既存のlight sectionsとquick scan短縮版にsection 8「建玉・ポートフォリオ影響」を加えます。全詳細sectionを追加しません。
 
-### 2.2.4 local master identityと重複解消
+### 2.3.4 local master identityと重複解消
 
 - DB sessionがあるlegacy reviewはactiveなlocal `SecurityMaster.ticker_code` / `local_code`を照合します。一致targetはmasterのcanonical `ticker_code`、正式名称、marketへ揃え、J-Quantsその他のproviderを追加callしません。
 - `local_code=285A0` / `ticker_code=285A`ならpromptとsnapshotは`285A`、`local_code=72030` / `ticker_code=7203`なら`7203`となります。これはDB primary keyやlocal codeのmutationではありません。
 - canonical tickerでholdings / candidatesをdedupeし、同じ銘柄が両方にあればholdingsを優先します。
 
-### 2.2.5 responseと画面表示
+### 2.3.5 responseと画面表示
 
 - `stocks[].name`と`portfolio_summary.buy_candidates`、`sell_or_reduce_candidates`、`hold_priority`、`non_monitoring_reduce_candidates`、`core_position_candidates`、`exit_or_rotate_candidates`を解決済みtarget identityで再照合します。
 - codeだけ、誤名称付きcode、正式名称だけのsummary値を「銘柄名（公開コード）」へ正規化します。unknown codeは`名称未登録（code）`とし、銘柄参照でない自由文は変更しません。
 - live、mock、保存前、cache hitへ同じ後処理を適用します。cache hitの補正でOpenAIを再呼び出ししません。
 - Portfolio / Watchlistのlegacy stock cardは公開codeを表示します。cacheに`285A0`が残っていても`285A`と表示できます。
 
-### 2.2.6 互換性・非対象・既知制約
+### 2.3.6 互換性・非対象・既知制約
 
 - legacy responseのfield type、endpoint、mode、model/reasoning、Web、quota、history/cache契約を維持します。target identity値はlocal masterへ一致した場合にcanonical tickerへ揃います。
 - canonical `POST /api/ai/analyses`のactive prompt v2026.08.18、`gpt-5.6-terra`、`STANDARD`、plain `response.output_text`、保存契約を変更しません。
 - local masterに名称が無いcodeは`名称未登録`となり、名称の外部推測やprovider照会を行いません。
 - 過去history JSON自体の一括書換え、master primary key migration、全module prompt再設計は対象外です。
 
-### 2.2.7 受け入れ確認
+### 2.3.7 受け入れ確認
 
 - promptに名称・code併記、Input JSON転記、scanner section 8が入り、不要な詳細sectionがscannerへ混入しないことを確認します。
 - local master aliasからcanonical ticker/name/marketへ補完し、dedupeとholdings優先が働き、provider追加callがないことを確認します。
@@ -522,6 +566,7 @@ model選択と回答品質presetは別の設定軸です。`STANDARD`はmodel名
 
 | 適用日 | 要件 | API | 画面 | 主な範囲 |
 |---|---:|---:|---:|---|
+| 2026-08-19 | v1.9 | v2.2 | v2.5 | SC-2026-08-19-03: legacy Structured Outputs JSONの安全でsemanticな可読表示 |
 | 2026-08-19 | v1.9 | v2.2 | v2.4 | SC-2026-08-19-02: legacy stock-reviewの銘柄identityと名称・code併記 |
 | 2026-08-19 | v1.8 | v2.1 | v2.3 | SC-2026-08-19-01: legacy軽量スキャンの構造化response契約と失敗分類 |
 | 2026-08-18 | v1.7 | v2.0 | v2.2 | SC-2026-08-18-02: 東証/J-Quants上場銘柄マスターのprivate local full sync |
@@ -531,7 +576,7 @@ model選択と回答品質presetは別の設定軸です。`STANDARD`はmodel名
 | 2026-08-17 | v1.3 | v1.6 | v1.8 | SC-2026-08-17-02: canonical AI回答保存・大型表示・prompt v2026.08.17 |
 | 2026-08-17 | v1.2 | v1.5 | v1.7 | SC-2026-08-17-01: canonical個別銘柄AI最小縦スライスと定型prompt最小統合 |
 
-直前baselineの完全な内容は各versioned fileに残します。新baselineはSC-2026-08-19-02までの要件v1.9、API v2.2、画面v2.4を維持したまま、画面v2.5でlegacy Structured Outputs JSONをMarkdownとして解釈せず、semanticな見出し、list、callout、根拠badgeへ安全に対応付けるSC-2026-08-19-03の可読表示を追加したものです。
+直前baselineの完全な内容は各versioned fileに残します。新baselineは要件v1.9、API v2.2、画面v2.5を維持したまま、画面v2.6でlegacy Portfolio / Watchlistの現在回答をclient-only Blob snapshotとして別タブ・別ウィンドウへ大きく表示するSC-2026-08-19-04を追加したものです。server保存、API、Web Storage、OpenAI再呼び出しは追加しません。
 
 ## 11. 更新ルール
 

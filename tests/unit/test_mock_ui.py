@@ -363,3 +363,65 @@ def test_dashboard_formats_structured_ai_reviews_as_safe_semantic_sections(
     assert "white-space: pre-wrap;" in html
     assert "marked" not in html.lower()
     assert "cdn.jsdelivr.net" not in html
+
+
+def test_dashboard_opens_current_ai_review_in_safe_blob_reader(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("APP_USE_MOCK", "true")
+
+    with TestClient(create_app()) as client:
+        response = client.get("/ui/dashboard")
+
+    assert response.status_code == 200
+    html = response.text
+
+    assert html.count('class="action-link ai-review-reader-link"') == 2
+    assert 'id="portfolio-ai-review-reader-link"' in html
+    assert 'id="watchlist-ai-review-reader-link"' in html
+    assert html.count('>回答を別タブ／ウィンドウで大きく表示</a>') == 2
+    assert html.count('target="_blank"') >= 2
+    assert html.count('rel="noopener noreferrer"') >= 2
+    assert html.count('referrerpolicy="no-referrer"') == 2
+    assert ".ai-review-reader-link[hidden]" in html
+
+    assert "const AI_REVIEW_READER_CONFIG = Object.freeze({" in html
+    assert 'resultId: "portfolio-ai-review-results"' in html
+    assert 'resultId: "watchlist-ai-review-results"' in html
+    assert "const aiReviewReaderObjectUrls = new Map();" in html
+    assert "const hasReadableAiReview = (review) => {" in html
+    assert 'if (!data || data.mode === "prompt_only") return false;' in html
+    assert 'const hasRawOutput = Boolean(String(data.raw_model_output ?? "").trim());' in html
+    assert 'return status === "success" || (status === "json_parse_failed" && hasRawOutput);' in html
+
+    assert "document.implementation.createHTMLDocument" in html
+    assert 'name: "referrer", content: "no-referrer"' in html
+    assert '"http-equiv": "Content-Security-Policy"' in html
+    assert "default-src 'none'; script-src 'none'; style-src 'unsafe-inline'" in html
+    assert "connect-src 'none'; img-src 'none'; font-src 'none'; frame-src 'none'" in html
+    assert "Array.from(sourceElement.children).forEach((child) => {" in html
+    assert "content.appendChild(child.cloneNode(true));" in html
+    assert 'new Blob([readerHtml], { type: "text/html;charset=utf-8" })' in html
+    assert "URL.createObjectURL" in html
+    assert "URL.revokeObjectURL" in html
+    assert "width: min(1440px, 100%);" in html
+    assert "@media print" in html
+
+    reader_helper = html.split("const clearAiReviewReader = (readerKey) => {", 1)[1].split(
+        "const text = (id, value) => {", 1
+    )[0]
+    assert "window.open" not in reader_helper
+    assert "document.write" not in reader_helper
+    assert "localStorage" not in reader_helper
+    assert "sessionStorage" not in reader_helper
+    assert "postMessage" not in reader_helper
+    assert "fetch(" not in reader_helper
+    assert "sourceElement.innerHTML" not in reader_helper
+
+    assert html.count('prepareAiReviewReader("portfolio", review);') == 2
+    assert html.count('prepareAiReviewReader("watchlist", review);') == 2
+    assert 'const renderError = (error) => {\n        const message = escapeHtml(error.message || String(error));\n        clearAiReviewReader("portfolio");\n        clearAiReviewReader("watchlist");' in html
+    assert 'prepareAiReviewReader("portfolio", state.portfolioAiReview);' in html
+    assert 'prepareAiReviewReader("watchlist", state.watchlistAiReview);' in html
+    assert 'window.addEventListener("pagehide"' in html
+    assert 'window.addEventListener("pageshow"' in html

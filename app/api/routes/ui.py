@@ -450,6 +450,15 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
         margin-top: 14px;
       }
 
+      .ai-review-reader-link {
+        width: fit-content;
+        margin-top: 14px;
+      }
+
+      .ai-review-reader-link[hidden] {
+        display: none;
+      }
+
       .ai-review-card {
         display: grid;
         gap: 14px;
@@ -970,6 +979,14 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
               <div class="search-feedback" id="portfolio-ai-review-feedback">未実行</div>
               <textarea class="textarea prompt-output" id="stock-ai-prompt-output" readonly placeholder="ChatGPT投入用プロンプト"></textarea>
             </div>
+            <a
+              class="action-link ai-review-reader-link"
+              id="portfolio-ai-review-reader-link"
+              target="_blank"
+              rel="noopener noreferrer"
+              referrerpolicy="no-referrer"
+              hidden
+            >回答を別タブ／ウィンドウで大きく表示</a>
             <div class="ai-review-grid" id="portfolio-ai-review-results" aria-live="polite" aria-busy="false"></div>
             <form class="search-row" id="portfolio-form" style="margin-top: 12px;">
               <input class="search-input" id="portfolio-ticker-input" name="ticker_code" placeholder="7203 / 285A" aria-label="保有銘柄コード" />
@@ -999,6 +1016,14 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
               </div>
               <div class="search-feedback" id="watchlist-ai-review-feedback">選択銘柄はAI分析パネルの「選択銘柄」で実行します。</div>
             </div>
+            <a
+              class="action-link ai-review-reader-link"
+              id="watchlist-ai-review-reader-link"
+              target="_blank"
+              rel="noopener noreferrer"
+              referrerpolicy="no-referrer"
+              hidden
+            >回答を別タブ／ウィンドウで大きく表示</a>
             <div class="ai-review-grid" id="watchlist-ai-review-results" aria-live="polite" aria-busy="false"></div>
             <div class="stack" id="watchlist-list"></div>
           </section>
@@ -1146,6 +1171,22 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
         selectedWatchlistTickers: new Set(),
       };
 
+      const AI_REVIEW_READER_CONFIG = Object.freeze({
+        portfolio: {
+          resultId: "portfolio-ai-review-results",
+          linkId: "portfolio-ai-review-reader-link",
+          feedbackId: "portfolio-ai-review-feedback",
+          title: "保有銘柄AI分析結果",
+        },
+        watchlist: {
+          resultId: "watchlist-ai-review-results",
+          linkId: "watchlist-ai-review-reader-link",
+          feedbackId: "watchlist-ai-review-feedback",
+          title: "ウォッチリストAI分析結果",
+        },
+      });
+      const aiReviewReaderObjectUrls = new Map();
+
       const detailPageUrl = (tickerCode) => `/ui/security/${encodeURIComponent(tickerCode)}`;
       const chartPageUrl = (tickerCode) => `/ui/security/${encodeURIComponent(tickerCode)}/chart`;
 
@@ -1226,6 +1267,169 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
         const node = document.getElementById(id);
         if (node) {
           node.setAttribute("aria-busy", busy ? "true" : "false");
+        }
+      };
+
+      const clearAiReviewReader = (readerKey) => {
+        const config = AI_REVIEW_READER_CONFIG[readerKey];
+        if (!config) return;
+        const currentUrl = aiReviewReaderObjectUrls.get(readerKey);
+        if (currentUrl) {
+          URL.revokeObjectURL(currentUrl);
+          aiReviewReaderObjectUrls.delete(readerKey);
+        }
+        const link = document.getElementById(config.linkId);
+        if (link) {
+          link.hidden = true;
+          link.removeAttribute("href");
+        }
+      };
+
+      const hasReadableAiReview = (review) => {
+        const data = review?.data;
+        if (!data || data.mode === "prompt_only") return false;
+        const status = String(data.status || "success");
+        const hasRawOutput = Boolean(String(data.raw_model_output ?? "").trim());
+        return status === "success" || (status === "json_parse_failed" && hasRawOutput);
+      };
+
+      const appendReaderMeta = (readerDocument, attributes) => {
+        const meta = readerDocument.createElement("meta");
+        Object.entries(attributes).forEach(([name, value]) => meta.setAttribute(name, value));
+        readerDocument.head.appendChild(meta);
+      };
+
+      const buildAiReviewReaderHtml = (config, sourceElement) => {
+        const readerDocument = document.implementation.createHTMLDocument("");
+        readerDocument.documentElement.lang = "ja";
+        readerDocument.head.replaceChildren();
+        appendReaderMeta(readerDocument, { charset: "utf-8" });
+        appendReaderMeta(readerDocument, {
+          name: "viewport",
+          content: "width=device-width, initial-scale=1",
+        });
+        appendReaderMeta(readerDocument, { name: "referrer", content: "no-referrer" });
+        appendReaderMeta(readerDocument, {
+          "http-equiv": "Content-Security-Policy",
+          content: "default-src 'none'; script-src 'none'; style-src 'unsafe-inline'; connect-src 'none'; img-src 'none'; font-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'",
+        });
+
+        const title = readerDocument.createElement("title");
+        title.textContent = config.title;
+        readerDocument.head.appendChild(title);
+        document.querySelectorAll("head style").forEach((sourceStyle) => {
+          readerDocument.head.appendChild(sourceStyle.cloneNode(true));
+        });
+
+        const readerStyle = readerDocument.createElement("style");
+        readerStyle.textContent = `
+          .ai-reader-main {
+            width: min(1440px, 100%);
+            max-width: none;
+            margin: 0 auto;
+            padding: 28px 20px 56px;
+          }
+          .ai-reader-header {
+            display: grid;
+            gap: 8px;
+            margin-bottom: 18px;
+            padding: 20px 24px;
+            border: 1px solid var(--line);
+            border-radius: 20px;
+            background: var(--panel-strong);
+            box-shadow: var(--shadow);
+          }
+          .ai-reader-heading,
+          .ai-reader-section-heading {
+            max-width: none;
+            margin: 0;
+          }
+          .ai-reader-note {
+            margin: 0;
+            color: var(--muted);
+            line-height: 1.65;
+          }
+          .ai-reader-section-heading {
+            margin-bottom: 14px;
+            font-size: 20px;
+          }
+          .ai-reader-content {
+            grid-template-columns: minmax(0, 1fr);
+            margin-top: 0;
+          }
+          .ai-reader-content .ai-review-card {
+            background: var(--panel-strong);
+          }
+          @media (max-width: 640px) {
+            .ai-reader-main { padding: 14px 10px 36px; }
+            .ai-reader-header { padding: 16px; border-radius: 14px; }
+          }
+          @media print {
+            @page { margin: 12mm; }
+            body { background: #fff; }
+            body::before { display: none; }
+            .ai-reader-main { width: 100%; padding: 0; }
+            .ai-reader-header,
+            .ai-review-card,
+            .ai-result-section {
+              box-shadow: none;
+              background: #fff;
+            }
+            .ai-result-section { break-inside: avoid; }
+          }
+        `;
+        readerDocument.head.appendChild(readerStyle);
+
+        const main = readerDocument.createElement("main");
+        main.className = "ai-reader-main";
+        const header = readerDocument.createElement("header");
+        header.className = "ai-reader-header";
+        const heading = readerDocument.createElement("h1");
+        heading.className = "ai-reader-heading";
+        heading.textContent = config.title;
+        const note = readerDocument.createElement("p");
+        note.className = "ai-reader-note";
+        note.textContent = "この画面を開いた時点の回答です。ブラウザの印刷機能も利用できます。";
+        header.append(heading, note);
+
+        const resultSection = readerDocument.createElement("section");
+        const sectionHeadingId = `ai-reader-heading-${config.resultId}`;
+        resultSection.setAttribute("aria-labelledby", sectionHeadingId);
+        const sectionHeading = readerDocument.createElement("h2");
+        sectionHeading.id = sectionHeadingId;
+        sectionHeading.className = "ai-reader-section-heading";
+        sectionHeading.textContent = "分析結果";
+        const content = readerDocument.createElement("div");
+        content.className = "ai-review-grid ai-reader-content";
+        Array.from(sourceElement.children).forEach((child) => {
+          content.appendChild(child.cloneNode(true));
+        });
+        resultSection.append(sectionHeading, content);
+        main.append(header, resultSection);
+        readerDocument.body.replaceChildren(main);
+        return `<!doctype html>\n${readerDocument.documentElement.outerHTML}`;
+      };
+
+      const prepareAiReviewReader = (readerKey, review) => {
+        clearAiReviewReader(readerKey);
+        if (!hasReadableAiReview(review)) return;
+        const config = AI_REVIEW_READER_CONFIG[readerKey];
+        const link = config ? document.getElementById(config.linkId) : null;
+        const sourceElement = config ? document.getElementById(config.resultId) : null;
+        if (!config || !link || !sourceElement?.children.length) return;
+        try {
+          const readerHtml = buildAiReviewReaderHtml(config, sourceElement);
+          const objectUrl = URL.createObjectURL(new Blob([readerHtml], { type: "text/html;charset=utf-8" }));
+          aiReviewReaderObjectUrls.set(readerKey, objectUrl);
+          link.href = objectUrl;
+          link.hidden = false;
+        } catch (_error) {
+          clearAiReviewReader(readerKey);
+          const feedback = document.getElementById(config.feedbackId);
+          if (feedback) {
+            feedback.className = "search-feedback error";
+            feedback.textContent = "別タブ用の回答画面を準備できませんでした。現在の画面で回答を確認してください。";
+          }
         }
       };
 
@@ -1946,6 +2150,7 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
       const renderPortfolioAiReview = () => {
         const feedback = document.getElementById("portfolio-ai-review-feedback");
         const review = state.portfolioAiReview;
+        clearAiReviewReader("portfolio");
         setAiResultBusy("portfolio-ai-review-results", review.status === "loading");
         if (feedback) {
           const tone = ["missing_api_key", "json_parse_failed", "openai_api_error", "openai_sdk_missing", "no_holdings", "target_limit_exceeded", "daily_limit_exceeded", "failed"].includes(review.status)
@@ -1990,6 +2195,7 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
               ${rawOutput}
             </article>
           `);
+          prepareAiReviewReader("portfolio", review);
           updateStockAiCost();
           return;
         }
@@ -2000,6 +2206,7 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
           ${renderAiReviewSummary(data)}
           ${stockCards}
         `);
+        prepareAiReviewReader("portfolio", review);
         updateStockAiCost();
       };
 
@@ -2078,6 +2285,7 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
       const renderWatchlistAiReview = () => {
         const feedback = document.getElementById("watchlist-ai-review-feedback");
         const review = state.watchlistAiReview;
+        clearAiReviewReader("watchlist");
         setAiResultBusy("watchlist-ai-review-results", review.status === "loading");
         if (feedback) {
           const tone = ["missing_api_key", "json_parse_failed", "openai_api_error", "openai_sdk_missing", "no_holdings", "failed"].includes(review.status)
@@ -2120,6 +2328,7 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
               ${rawOutput}
             </article>
           `);
+          prepareAiReviewReader("watchlist", review);
           return;
         }
 
@@ -2129,6 +2338,7 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
           ${renderAiReviewSummary(data, "選択ウォッチリスト")}
           ${stockCards}
         `);
+        prepareAiReviewReader("watchlist", review);
       };
 
       const runWatchlistAiReview = async () => {
@@ -3347,6 +3557,8 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
 
       const renderError = (error) => {
         const message = escapeHtml(error.message || String(error));
+        clearAiReviewReader("portfolio");
+        clearAiReviewReader("watchlist");
         if (PAGE_MODE === "detail") {
           text("detail-page-title", "銘柄詳細");
           text("detail-page-subtitle", "読み込みに失敗しました。");
@@ -4004,6 +4216,16 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
           }
         });
       }
+
+      window.addEventListener("pagehide", () => {
+        Object.keys(AI_REVIEW_READER_CONFIG).forEach(clearAiReviewReader);
+      });
+
+      window.addEventListener("pageshow", (event) => {
+        if (!event.persisted) return;
+        prepareAiReviewReader("portfolio", state.portfolioAiReview);
+        prepareAiReviewReader("watchlist", state.watchlistAiReview);
+      });
 
       const bootstrap = async () => {
         try {

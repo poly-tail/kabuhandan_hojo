@@ -1,6 +1,6 @@
 # Screen Spec Current
 
-> 現在の正本: `screen_spec_v2.5.md`
+> 現在の正本: `screen_spec_v2.6.md`
 
 ## 概要
 
@@ -9,9 +9,9 @@
 
 ## 現在値
 
-- 画面仕様書: v2.5
+- 画面仕様書: v2.6
 - 更新日: 2026-08-19
-- 変更概要: legacy Structured Outputs JSONをsemanticな見出し、list、callout、根拠badgeへ安全に対応付け、Portfolio / Watchlistで共通化
+- 変更概要: legacy Portfolio / Watchlistの現在回答を、安全なclient-only Blob snapshotとして別タブ・別ウィンドウへ大きく表示
 
 ## 主な変更点
 
@@ -27,6 +27,9 @@
 - dashboard legacy AI usage panelと利用者向けholdings-source label
 - legacy成功responseはMarkdown本文として解釈せず、既知JSON fieldを全体所見、risk、行動、候補、warning、stock detail、sourceへ意味別表示すること
 - 空section省略、同じlist内の重複除去、Portfolio / Watchlist共通helper、escaped textと文字label付き`【V】` / `【E】` / `【U】` badge
+- legacy Portfolio / Watchlistの`status=success`（`prompt_only`除外）または非空生応答を持つ`json_parse_failed`に、`回答を別タブ／ウィンドウで大きく表示`action linkを出すこと
+- 大画面表示は現在dataのclient-only Blob snapshotとし、共通safe renderer、restrictive CSP、`target="_blank"` / `rel="noopener noreferrer"`、source URL allowlistを維持すること
+- action linkの準備・openでAPI、DB、Web Storage、history/cache、OpenAI再呼び出し、quota / usageを増やさず、Blob readerのreload・bookmark・恒久URL復元を保証しないこと
 - unsafe source URLをlinkにせず、raw fallbackを赤いerror card内のplain escaped表示に保ち、mobile / keyboard / screen readerで読めること
 - `json_parse_failed`を成功表示しない赤いerror cardと、`json_syntax` / `root_shape` / `schema_validation`の利用者向けlabel
 - raw output救済を成功回数とcacheへ含めず、調査用historyと生応答表示を維持する境界
