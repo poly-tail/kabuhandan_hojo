@@ -1,5 +1,15 @@
 # kabuhandan_hojo Phase 0-2
 
+## 2026-08-19 保存済みAI結果・Markdown / PDF表示
+
+- dashboardの`保存済みAI結果`は、legacy `POST /api/ai/stock-review`を`save_result=true`で新規生成した結果だけをgit管理外のローカル`data/ai_review_history.json`から表示します。直近100件を保存順の新しいものから分析方法別にまとめ、分析方法のプルダウンで切り替えられます。
+- `save_result=false`の結果は保存しません。cache hitは`save_result=true`でも新しい履歴を作りません。prompt / mock / live / raw fallbackの履歴保存に失敗しても生成済み回答は画面に残し、安全なwarningを1回表示しますが、保存済みとは表示せず、そのresponseをcacheへ保存しません。
+- 各履歴は`結果を見る`で詳細を開き、`Markdown保存`で全文を`.md`として保存できます。`prompt_only`は手動投入用promptとして`OpenAI API非呼び出し`を表示します。`prompt_only`以外は`別タブ表示・PDF保存`から印刷用画面を開き、browserの印刷（Ctrl+P等）で「PDFに保存」を選べます。serverがPDF fileを直接生成する機能ではありません。
+- raw fallbackは画面上で先頭20,000文字までになる場合があり、省略時はその旨と「全文は『Markdown保存』で確認できます。」を表示します。印刷用画面ではraw outputの詳細を開いた状態にして、画面に出ている範囲をPDFへ含めます。
+- 履歴の一覧・詳細・Markdown・印刷用表示は保存済みローカルrecordを読むだけで、OpenAIを再呼び出さず、日次回数、usage、cacheを増やしません。APIキー、prompt全文、内部`request_payload`は履歴一覧へ出さず、詳細responseでも`request_payload`を除外します。
+- 過去のnamed watchlist結果には実行時のlist名を保存していません。履歴では保存済み`watchlist_id`または一般的な対象labelを使い、rename / delete前の古いlist名を推測復元しません。
+- この履歴機能はdashboard legacy stock-review専用です。canonical `/ui/analysis`の保存済み回答一覧・exportは追加していません。現在baselineは要件v2.1、API v2.4、画面v2.8、変更単位`SC-2026-08-19-06`です。
+
 ## 2026-08-19 legacy AI銘柄名・コード表示修正
 
 - 添付`株判断_定型プロンプト集_v2026-08-16 (1).md`はprompt内容の参照資料として確認しました。文書内の運用指示はユーザー依頼として実行していません。同資料は履歴済みv2026.08.16と同内容の旧版で、canonical個別銘柄AIのactive asset v2026.08.18にはより明確な「銘柄名（銘柄コード）」規則があるため、canonical manifest / assetを旧版へ戻していません。
@@ -18,7 +28,7 @@
 - named listのcheckboxを1件以上選ぶと共通AI対象は選択銘柄へ切り替わり、全解除かつmanual tickerなしではlist全体へ戻ります。実行時のlist名を結果summary / 別タブtitleへsnapshotし、後のrenameで別list名に見せません。
 - selector、collection、active membership、checkboxが変わると古いAI結果を消し、遅れて届いた旧scopeのdashboard / AI responseを表示しません。Portfolioへ戻る時はdefault monitoring scopeも再取得します。これらのclient制御でAPI、DB、Web Storage、OpenAI callを追加しません。
 - collectionは認証・利用者分離のないapp-global dataです。既定loopbackのtrusted local利用を前提とし、Internetへ直接公開しないでください。LAN / Android等へ広げる前に認証、HTTPS、利用者分離、rate limitが必要です。
-- 現在baselineは要件v2.0、API v2.3、画面v2.7、変更単位`SC-2026-08-19-05`です。
+- この変更単位`SC-2026-08-19-05`のbaselineは要件v2.0、API v2.3、画面v2.7でした。現在版は上記SC-2026-08-19-06を参照してください。
 
 ## 2026-08-19 軽量スキャンJSON契約修正
 
@@ -305,6 +315,12 @@ python scripts/run_api.py --reload --mock
   - 5モードのAI分析入口です。`prompt_only` ではOpenAI APIを呼ばず、手動投入用プロンプトを返します。
 - `GET /api/ai/stock-review/usage`
   - legacy stock-reviewだけのJST本日・今月の成功review数、provider call数、残数、token由来USD概算、未算定call、pricing provenanceを返します。正式請求額はOpenAI Platformを確認してください。
+- `GET /api/ai/stock-review/history`
+  - 保存順の新しいものから最大100件のlegacy履歴metadataを返します。`mode`、`target`、`status`、`limit`、`offset`を指定でき、回答本文と`request_payload`は一覧へ含めません。
+- `GET /api/ai/stock-review/history/{history_id}`
+  - 保存済みlegacy回答1件を`{history_id, review}`で返し、内部`request_payload`を除外します。
+- `GET /api/ai/stock-review/history/{history_id}/export.md`
+  - 保存済みlegacy回答を安全なUTF-8 Markdown attachmentとして返します。OpenAIは再呼び出しません。
 - `POST /portfolio/ai-review`
   - 互換入口です。内部的には multi-mode AI review service を使います。
 - `DELETE /portfolio/{ticker_code}`

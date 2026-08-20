@@ -10,6 +10,14 @@ from pydantic import BaseModel, ConfigDict, Field
 
 AiReviewMode = Literal["scanner", "analyst", "judge", "critical", "prompt_only"]
 AiReviewTarget = Literal["holdings", "watchlist", "candidates", "selected", "mock"]
+AiReviewHistoryTarget = Literal[
+    "holdings",
+    "watchlist",
+    "candidates",
+    "selected",
+    "mock",
+    "unknown",
+]
 AnalysisMode = Literal["daily", "swing", "weekly"]
 RiskPreference = Literal["conservative", "balanced", "aggressive"]
 WebSearchPolicy = Literal["optional", "required", "strongly_recommended", "manual_only"]
@@ -348,7 +356,7 @@ class PortfolioAiReviewResponse(BaseModel):
     reasoning_effort: ReasoningEffort | None = None
     include_web_search: bool = False
     web_search_policy: WebSearchPolicy = "optional"
-    estimated_cost_usd: float = 0
+    estimated_cost_usd: float = Field(default=0, ge=0, allow_inf_nan=False)
     actual_usage: PortfolioAiUsage = Field(default_factory=PortfolioAiUsage)
     input_summary: dict[str, Any] = Field(default_factory=dict)
     market_summary: dict[str, Any] = Field(default_factory=dict)
@@ -371,3 +379,54 @@ class PortfolioAiReviewResponse(BaseModel):
     candidates_snapshot: list[PortfolioAiCandidate] = Field(default_factory=list)
     market_snapshot: list[PortfolioMarketSnapshot] = Field(default_factory=list)
     request_payload: dict[str, Any] = Field(default_factory=dict)
+
+
+class PortfolioAiReviewHistoryItem(BaseModel):
+    """Metadata-only projection of one locally saved legacy AI review."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    history_id: str = Field(pattern=r"^[0-9a-f]{64}$")
+    generated_at: datetime
+    mode: AiReviewMode
+    mode_label: str
+    analysis_mode: AnalysisMode
+    target: AiReviewHistoryTarget
+    target_label: str
+    status: ReviewStatus
+    status_label: str
+    holdings_source: HoldingsSource
+    stock_count: int = Field(ge=0)
+    stocks_preview: list[str] = Field(default_factory=list)
+    summary: str
+    model: str | None = None
+    watchlist_id: int | None = Field(default=None, ge=1)
+    include_web_search: bool = False
+    web_search_used: bool = False
+    mock_response: bool = False
+    cache_hit: bool = False
+    estimated_cost_usd: float = Field(default=0, ge=0, allow_inf_nan=False)
+
+
+class PortfolioAiReviewHistoryListResponse(BaseModel):
+    """Filtered, paginated metadata for the bounded local JSON history."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[PortfolioAiReviewHistoryItem] = Field(default_factory=list)
+    total: int = Field(ge=0)
+    stored_count: int = Field(ge=0)
+    invalid_count: int = Field(ge=0)
+    mode_counts: dict[AiReviewMode, int] = Field(default_factory=dict)
+    retention_limit: int = Field(default=100, ge=1)
+    limit: int = Field(ge=1, le=100)
+    offset: int = Field(ge=0)
+
+
+class PortfolioAiReviewHistoryDetail(BaseModel):
+    """One saved review with internal request payload data removed."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    history_id: str = Field(pattern=r"^[0-9a-f]{64}$")
+    review: dict[str, Any]

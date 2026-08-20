@@ -1,5 +1,15 @@
 # Source Overview
 
+## 2026-08-19 legacy保存済みAI結果 addendum
+
+- `app/schemas/portfolio_ai.py`はmetadata-only `PortfolioAiReviewHistoryItem`、filter / pagination集計を持つ`PortfolioAiReviewHistoryListResponse`、`{history_id, review}`の`PortfolioAiReviewHistoryDetail`を定義する。
+- `app/services/portfolio_ai_review.py`は`data/ai_review_history.json`へ最大100件を保存し、64hex SHA-256 ID、保存順の新しいものから返すfilterable metadata、`request_payload`除外detail、安全なMarkdown export、旧code-only参照のread-time identity補完を提供する。summaryはmodel本文ではなくmode / status / 銘柄数から決定的に生成する。
+- 同serviceは`save_result=true`の新規responseだけを保存し、cache hitでは追加しない。prompt / mock / live / raw fallbackの保存失敗時は生成回答を維持してsafe warningを1回追加し、そのresponseをcacheへ保存しない。不正entryはskip/count、不正rootは上書き拒否し、同一process `RLock`と一時file / fsync / `os.replace`で通常appendを保護する。
+- `app/api/routes/portfolio.py`は`GET /api/ai/stock-review/history`、`GET /api/ai/stock-review/history/{history_id}`、`GET /api/ai/stock-review/history/{history_id}/export.md`を公開し、no-store / nosniff、Markdownではno-referrerとsafe ASCII attachment filenameを付ける。
+- `app/api/routes/ui.py`はdashboardの`保存済みAI結果`、mode別一覧、detail、prompt-only、Markdown保存、既存safe Blob readerによる別タブ印刷 / PDF保存を描画する。raw fallbackは画面先頭20,000文字の省略を明示し、全文Markdownを案内し、印刷cloneでは`details.ai-raw-output`をopenにする。
+- `tests/unit/test_ai_review_history.py`は保存条件、filter / pagination / count、metadata-only、detail除外、Markdown安全性、旧identity補完、破損root、thread-safe atomic appendを固定する。`tests/unit/test_mock_ui.py`は分類一覧、detail、Markdown / PDF導線、safe reader、raw省略と印刷展開を固定する。
+- `docs/requirements/requirements_v2.1.md`、`docs/specs/api_spec_v2.4.md`、`docs/screen_specs/screen_spec_v2.8.md`、`docs/spec_change_history.md`が`SC-2026-08-19-06`を保持する。旧versioned文書は変更しない。
+
 ## 2026-08-19 Portfolio・複数named watchlist addendum
 
 - `app/models/watchlist.py`と`src/kabuhandan_hojo/models/entities.py`は既存ticker-level `watchlist`に加え、`watchlist_collection`と`watchlist_membership`を定義する。`app/models/__init__.py`と`src/kabuhandan_hojo/models/__init__.py`が新entityを公開する。

@@ -211,8 +211,11 @@ def test_dashboard_stock_ai_usage_ui_is_persistent_safe_and_refreshed(
     assert "正式な請求額ではありません" in html
     assert "OpenAI PlatformのUsage Dashboardを正本" in html
     assert 'fetchJson("/api/ai/stock-review/usage")' in html
-    assert "await Promise.all([loadDashboard(null), loadStockAiUsage(), loadSecurityMasterStatus()]);" in html
-    assert html.count("await loadStockAiUsage();") >= 2
+    assert "loadDashboard(null)," in html
+    assert "loadStockAiUsage()," in html
+    assert "loadStockAiHistory()," in html
+    assert "loadSecurityMasterStatus()," in html
+    assert html.count("await Promise.all([loadStockAiUsage(), loadStockAiHistory()]);") >= 2
     assert "今回の事前概算" in html
     assert "includeWebSearch ? 0.01 * webCalls : 0" in html
     assert "includeWebSearch ? 0.008 * webCalls : 0" not in html
@@ -407,7 +410,7 @@ def test_dashboard_formats_structured_ai_reviews_as_safe_semantic_sections(
     assert "const renderAiReviewSummary = (data, contextLabel = \"\") => {" in html
     assert '${renderAiReviewSummary(data, review.contextLabel || "")}' in html
     assert '${renderAiReviewSummary(data, "選択ウォッチリスト")}' in html
-    assert html.count("renderAiReviewSummary(data") == 2
+    assert html.count("renderAiReviewSummary(data") == 4
     assert 'data.mode ? aiModeLabel(data.mode) : ""' not in html
     assert 'renderAiTextSection("運用スタンス", marketTemperature)' in html
     assert 'escapeHtml(summary.market_temperature || "-")' not in html
@@ -454,7 +457,10 @@ def test_dashboard_formats_structured_ai_reviews_as_safe_semantic_sections(
 
     assert "const renderAiRawFallback = (rawOutput) => {" in html
     assert "OpenAI生応答（解析できなかった内容）" in html
-    assert '<pre class="ai-raw-content">${escapeHtml(String(rawOutput).slice(0, 20000))}</pre>' in html
+    assert "const displayLimit = 20000;" in html
+    assert "const truncated = rawText.length > displayLimit;" in html
+    assert '<pre class="ai-raw-content">${escapeHtml(rawText.slice(0, displayLimit))}</pre>' in html
+    assert "全文は「Markdown保存」で確認できます。" in html
     assert html.count("const rawOutput = renderAiRawFallback(data.raw_model_output);") == 2
 
     assert "const safeAiSourceUrl = (value) => {" in html
@@ -492,18 +498,21 @@ def test_dashboard_opens_current_ai_review_in_safe_blob_reader(
     assert response.status_code == 200
     html = response.text
 
-    assert html.count('class="action-link ai-review-reader-link"') == 2
+    assert html.count('class="action-link ai-review-reader-link"') == 3
     assert 'id="portfolio-ai-review-reader-link"' in html
     assert 'id="watchlist-ai-review-reader-link"' in html
+    assert 'id="stock-ai-history-reader-link"' in html
     assert html.count('>回答を別タブ／ウィンドウで大きく表示</a>') == 2
-    assert html.count('target="_blank"') >= 2
-    assert html.count('rel="noopener noreferrer"') >= 2
-    assert html.count('referrerpolicy="no-referrer"') == 2
+    assert ">別タブ表示・PDF保存（印刷）</a>" in html
+    assert html.count('target="_blank"') >= 3
+    assert html.count('rel="noopener noreferrer"') >= 3
+    assert html.count('referrerpolicy="no-referrer"') == 3
     assert ".ai-review-reader-link[hidden]" in html
 
     assert "const AI_REVIEW_READER_CONFIG = Object.freeze({" in html
     assert 'resultId: "portfolio-ai-review-results"' in html
     assert 'resultId: "watchlist-ai-review-results"' in html
+    assert 'resultId: "stock-ai-history-detail-results"' in html
     assert "const aiReviewReaderObjectUrls = new Map();" in html
     assert "const hasReadableAiReview = (review) => {" in html
     assert 'if (!data || data.mode === "prompt_only") return false;' in html
@@ -516,12 +525,16 @@ def test_dashboard_opens_current_ai_review_in_safe_blob_reader(
     assert "default-src 'none'; script-src 'none'; style-src 'unsafe-inline'" in html
     assert "connect-src 'none'; img-src 'none'; font-src 'none'; frame-src 'none'" in html
     assert "Array.from(sourceElement.children).forEach((child) => {" in html
-    assert "content.appendChild(child.cloneNode(true));" in html
+    assert "const clonedChild = child.cloneNode(true);" in html
+    assert 'clonedChild.querySelectorAll("details.ai-raw-output").forEach((details) => {' in html
+    assert "details.open = true;" in html
+    assert "content.appendChild(clonedChild);" in html
     assert 'new Blob([readerHtml], { type: "text/html;charset=utf-8" })' in html
     assert "URL.createObjectURL" in html
     assert "URL.revokeObjectURL" in html
     assert "width: min(1440px, 100%);" in html
     assert "@media print" in html
+    assert "ブラウザの印刷（Ctrl+P）で「PDFに保存」を選んでください。" in html
 
     reader_helper = html.split("const clearAiReviewReader = (readerKey) => {", 1)[1].split(
         "const text = (id, value) => {", 1
@@ -537,7 +550,74 @@ def test_dashboard_opens_current_ai_review_in_safe_blob_reader(
     assert html.count('prepareAiReviewReader("portfolio", review);') == 2
     assert html.count('prepareAiReviewReader("watchlist", review);') == 2
     assert 'const renderError = (error) => {\n        const message = escapeHtml(error.message || String(error));\n        clearAiReviewReader("portfolio");\n        clearAiReviewReader("watchlist");' in html
+    assert 'clearAiReviewReader("history");' in html
     assert 'prepareAiReviewReader("portfolio", state.portfolioAiReview);' in html
     assert 'prepareAiReviewReader("watchlist", state.watchlistAiReview);' in html
+    assert 'prepareAiReviewReader("history", state.stockAiHistoryDetail);' in html
     assert 'window.addEventListener("pagehide"' in html
     assert 'window.addEventListener("pageshow"' in html
+
+
+def test_dashboard_lists_saved_ai_reviews_and_exposes_safe_exports(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("APP_USE_MOCK", "true")
+
+    with TestClient(create_app()) as client:
+        response = client.get("/ui/dashboard")
+
+    assert response.status_code == 200
+    html = response.text
+
+    assert 'id="stock-ai-history-panel"' in html
+    assert 'id="stock-ai-history-mode"' in html
+    assert 'id="stock-ai-history-list" aria-live="polite" aria-busy="true"' in html
+    assert 'id="stock-ai-history-detail"' in html
+    assert 'id="stock-ai-history-detail-results" aria-live="polite" aria-busy="false"' in html
+    assert 'id="stock-ai-history-markdown-link" download hidden' in html
+    assert "直近100件" in html
+    for mode in ("scanner", "analyst", "judge", "critical", "prompt_only"):
+        assert f'<option value="{mode}">' in html
+
+    assert "const AI_HISTORY_MODE_ORDER = Object.freeze([" in html
+    assert "const safeStockAiHistoryId = (value) => {" in html
+    assert "/^[A-Za-z0-9_-]{8,128}$/.test(candidate)" in html
+    assert "const renderStockAiHistory = () => {" in html
+    assert "const renderStockAiHistoryItem = (item) => {" in html
+    assert "const items = Array.isArray(data.items) ? [...data.items] : [];" in html
+    assert "return rightTime - leftTime;" not in html
+    assert 'data-stock-ai-history-detail="${escapeAttr(historyId)}"' in html
+    assert 'data-stock-ai-history-reader="${escapeAttr(historyId)}"' in html
+    assert '&& ["success", "json_parse_failed"].includes(status)' in html
+    assert "別タブ表示・PDF保存" in html
+    assert 'href="/api/ai/stock-review/history/${encodeURIComponent(historyId)}/export.md"' in html
+    assert "Markdown保存" in html
+    assert "renderAiText(summary)" in html
+    assert "escapeHtml(modeLabel)" in html
+    assert "escapeHtml(stockPreview)" in html
+
+    assert 'fetchJson("/api/ai/stock-review/history")' in html
+    assert "fetchJson(`/api/ai/stock-review/history/${encodeURIComponent(historyId)}`)" in html
+    assert "const review = payload?.review;" in html
+    assert 'prepareAiReviewReader("history", detail);' in html
+    assert "readerLink.click()" not in html
+    assert 'readerLink.focus({ preventScroll: true });' in html
+    assert "印刷用画面を準備しました" in html
+    assert "一覧表示やエクスポートでOpenAI APIは呼びません。" in html
+    assert "前回結果（キャッシュ）の再表示は重複保存しません。" in html
+
+    assert 'if (data.mode === "prompt_only") {' in html
+    assert 'data.mode === "prompt_only"\n            ? "OpenAI API非呼び出し"' in html
+    assert '<pre class="ai-history-prompt">${escapeHtml(data.manual_prompt || "保存されたプロンプトはありません。")}</pre>' in html
+    assert "これはOpenAI回答ではなく" in html
+    assert "renderAiRawFallback(data.raw_model_output)" in html
+    assert ".ai-history-prompt {" in html
+
+    history_helper = html.split("const AI_HISTORY_MODE_ORDER", 1)[1].split(
+        "const setPortfolioAiButtonsDisabled", 1
+    )[0]
+    assert 'method: "POST"' not in history_helper
+    assert "localStorage" not in history_helper
+    assert "sessionStorage" not in history_helper
+    assert "window.open" not in history_helper
+    assert "marked" not in history_helper.lower()

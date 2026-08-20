@@ -4,12 +4,17 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
+import html
 import hashlib
 import json
 import logging
+import os
 from pathlib import Path
 import re
+import tempfile
+import threading
 from typing import Any
+from urllib.parse import quote, urlsplit
 from zoneinfo import ZoneInfo
 
 from pydantic import ValidationError
@@ -27,6 +32,7 @@ from app.prompts.stock_analysis import (
     validate_stock_analysis_response,
 )
 from app.schemas.portfolio_ai import (
+    AiReviewHistoryTarget,
     AiReviewMode,
     HoldingsSource,
     LongTermCarryCheck,
@@ -35,6 +41,9 @@ from app.schemas.portfolio_ai import (
     PortfolioAiHolding,
     ParseFailureKind,
     PortfolioAiReviewError,
+    PortfolioAiReviewHistoryDetail,
+    PortfolioAiReviewHistoryItem,
+    PortfolioAiReviewHistoryListResponse,
     PortfolioAiReviewRequest,
     PortfolioAiReviewResponse,
     PortfolioAiReviewSource,
@@ -43,6 +52,7 @@ from app.schemas.portfolio_ai import (
     PortfolioAiUsage,
     PortfolioMarketSnapshot,
     ReasoningEffort,
+    ReviewStatus,
 )
 from app.services.ai_usage import get_legacy_ai_usage_ledger
 from app.services.mock_watchlist import mock_watchlist_service
@@ -57,6 +67,12 @@ TOKYO_TIMEZONE = ZoneInfo("Asia/Tokyo")
 DATA_DIR = REPO_ROOT / "data"
 AI_REVIEW_HISTORY_PATH = DATA_DIR / "ai_review_history.json"
 AI_REVIEW_CACHE_PATH = DATA_DIR / "ai_review_cache.json"
+AI_REVIEW_HISTORY_LIMIT = 100
+AI_REVIEW_HISTORY_LOCK = threading.RLock()
+AI_REVIEW_HISTORY_SAVE_WARNING = (
+    "AI結果は生成されましたが、ローカル履歴の保存に失敗しました。"
+    "data保存先の書込み権限または履歴JSONを確認してください。"
+)
 
 JUDGEMENT_LABELS = {
     "hold": "保有継続",
@@ -74,6 +90,26 @@ MODE_LABELS = {
     "judge": "全体売買判断",
     "critical": "重要局面分析",
     "prompt_only": "ChatGPT投入用プロンプト生成",
+}
+
+TARGET_LABELS = {
+    "holdings": "保有銘柄",
+    "watchlist": "ウォッチリスト",
+    "candidates": "狙い中銘柄",
+    "selected": "選択銘柄",
+    "mock": "テスト用仮銘柄",
+    "unknown": "対象不明",
+}
+
+STATUS_LABELS = {
+    "success": "正常完了",
+    "missing_api_key": "APIキー未設定",
+    "json_parse_failed": "JSON解析失敗",
+    "openai_api_error": "OpenAI APIエラー",
+    "openai_sdk_missing": "OpenAI SDK未導入",
+    "no_holdings": "対象銘柄なし",
+    "target_limit_exceeded": "対象銘柄数超過",
+    "daily_limit_exceeded": "日次上限到達",
 }
 
 SUMMARY_SECURITY_REFERENCE_FIELDS = (
@@ -578,7 +614,7 @@ class PortfolioAiReviewService:
                 request_payload=request_payload,
             )
             if options.save_result:
-                self.save_ai_review_result(response)
+                self._save_ai_review_result_with_warning(response)
             return response
 
         if self._should_force_mock_response(options, holdings_source):
@@ -605,7 +641,7 @@ class PortfolioAiReviewService:
                 candidates=candidates,
             )
             if options.save_result:
-                self.save_ai_review_result(response)
+                self._save_ai_review_result_with_warning(response)
             return response
 
         cache_key = self._cache_key(request_payload)
@@ -636,7 +672,7 @@ class PortfolioAiReviewService:
                 candidates=candidates,
             )
             if options.save_result:
-                self.save_ai_review_result(response)
+                self._save_ai_review_result_with_warning(response)
             return response
 
         if not settings.openai_api_key:
@@ -888,8 +924,8 @@ class PortfolioAiReviewService:
         if not raw_fallback:
             self._increment_daily_usage()
         if options.save_result:
-            self.save_ai_review_result(response)
-            if not raw_fallback:
+            history_saved = self._save_ai_review_result_with_warning(response)
+            if history_saved and not raw_fallback:
                 self._save_cached_response(cache_key, response)
         return response
 
@@ -966,10 +1002,93 @@ class PortfolioAiReviewService:
         except (TypeError, ValueError, ValidationError) as exc:
             raise AiReviewSchemaValidationError("model output did not match the response schema") from exc
 
-    def save_ai_review_result(self, response: PortfolioAiReviewResponse) -> None:
+    def save_ai_review_result(self, response: PortfolioAiReviewResponse) -> bool:
         """Append AI analysis result to local JSON history."""
 
-        self._append_json_list(AI_REVIEW_HISTORY_PATH, response.model_dump(mode="json"), limit=100)
+        return self._append_json_list(
+            AI_REVIEW_HISTORY_PATH,
+            response.model_dump(mode="json"),
+            limit=AI_REVIEW_HISTORY_LIMIT,
+        )
+
+    def _save_ai_review_result_with_warning(self, response: PortfolioAiReviewResponse) -> bool:
+        saved = self.save_ai_review_result(response)
+        if not saved and AI_REVIEW_HISTORY_SAVE_WARNING not in response.warnings:
+            response.warnings.append(AI_REVIEW_HISTORY_SAVE_WARNING)
+        return saved
+
+    def list_ai_review_history(
+        self,
+        *,
+        mode: AiReviewMode | None = None,
+        target: AiReviewHistoryTarget | None = None,
+        status: ReviewStatus | None = None,
+        limit: int = AI_REVIEW_HISTORY_LIMIT,
+        offset: int = 0,
+    ) -> PortfolioAiReviewHistoryListResponse:
+        """Return newest-first, metadata-only history without prompt or position data."""
+
+        entries, stored_count, invalid_count = self._load_valid_ai_review_history()
+        mode_counts: dict[AiReviewMode, int] = {
+            "scanner": 0,
+            "analyst": 0,
+            "judge": 0,
+            "critical": 0,
+            "prompt_only": 0,
+        }
+        for _, review in entries:
+            mode_counts[review.mode] += 1
+        items: list[PortfolioAiReviewHistoryItem] = []
+        for history_id, review in reversed(entries):
+            item = self._history_item(history_id, review)
+            if mode is not None and item.mode != mode:
+                continue
+            if target is not None and item.target != target:
+                continue
+            if status is not None and item.status != status:
+                continue
+            items.append(item)
+
+        total = len(items)
+        paged_items = items[offset : offset + limit]
+        return PortfolioAiReviewHistoryListResponse(
+            items=paged_items,
+            total=total,
+            stored_count=stored_count,
+            invalid_count=invalid_count,
+            mode_counts=mode_counts,
+            retention_limit=AI_REVIEW_HISTORY_LIMIT,
+            limit=limit,
+            offset=offset,
+        )
+
+    def get_ai_review_history(self, history_id: str) -> PortfolioAiReviewHistoryDetail | None:
+        """Return one saved review while excluding its internal request payload."""
+
+        entry = self._find_ai_review_history(history_id)
+        if entry is None:
+            return None
+        normalized_id, review = entry
+        return PortfolioAiReviewHistoryDetail(
+            history_id=normalized_id,
+            review=review.model_dump(mode="json", exclude={"request_payload"}),
+        )
+
+    def export_ai_review_history_markdown(self, history_id: str) -> tuple[str, str] | None:
+        """Render one saved review as a semantic, UTF-8 Markdown attachment."""
+
+        entry = self._find_ai_review_history(history_id)
+        if entry is None:
+            return None
+        normalized_id, review = entry
+        generated_at = review.generated_at
+        if generated_at.tzinfo is None:
+            generated_at = generated_at.replace(tzinfo=TOKYO_TIMEZONE)
+        generated_at = generated_at.astimezone(TOKYO_TIMEZONE)
+        filename = (
+            f"ai-review-{generated_at:%Y%m%d-%H%M%S}-{review.mode}-{normalized_id[:8]}.md"
+        )
+        return filename, self._build_ai_review_markdown(normalized_id, review)
 
     def _resolve_holdings(
         self,
@@ -2059,6 +2178,451 @@ class PortfolioAiReviewService:
     def _record_provider_usage(self, *, model: str, usage: PortfolioAiUsage) -> None:
         get_legacy_ai_usage_ledger().record_provider_response(model=model, usage=usage)
 
+    def _load_valid_ai_review_history(
+        self,
+    ) -> tuple[list[tuple[str, PortfolioAiReviewResponse]], int, int]:
+        raw_entries, invalid_root = self._read_json_list_state(AI_REVIEW_HISTORY_PATH)
+        valid_entries: list[tuple[str, PortfolioAiReviewResponse]] = []
+        invalid_count = 1 if invalid_root else 0
+        for raw_entry in raw_entries:
+            if not isinstance(raw_entry, dict):
+                invalid_count += 1
+                continue
+            try:
+                review = PortfolioAiReviewResponse.model_validate(raw_entry)
+                history_id = self._history_id(raw_entry)
+                review = self._enrich_response_security_references(
+                    review,
+                    holdings=review.holdings_snapshot,
+                    candidates=review.candidates_snapshot,
+                )
+            except (TypeError, ValueError, ValidationError):
+                invalid_count += 1
+                continue
+            valid_entries.append((history_id, review))
+        return valid_entries, len(raw_entries), invalid_count
+
+    def _find_ai_review_history(self, history_id: str) -> tuple[str, PortfolioAiReviewResponse] | None:
+        normalized_id = history_id.strip().lower()
+        if re.fullmatch(r"[0-9a-f]{64}", normalized_id) is None:
+            return None
+        entries, _, _ = self._load_valid_ai_review_history()
+        for stored_id, review in entries:
+            if stored_id == normalized_id:
+                return stored_id, review
+        return None
+
+    @staticmethod
+    def _history_id(raw_entry: dict[str, Any]) -> str:
+        canonical = json.dumps(
+            raw_entry,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+    def _history_item(
+        self,
+        history_id: str,
+        review: PortfolioAiReviewResponse,
+    ) -> PortfolioAiReviewHistoryItem:
+        target = self._history_target(review)
+        stock_labels = self._history_stock_labels(review)
+        if review.mode == "prompt_only":
+            summary = "ChatGPT投入用プロンプト"
+        elif review.status == "success":
+            summary = f"{len(stock_labels)}銘柄の保存済み結果"
+        else:
+            summary = STATUS_LABELS[review.status]
+        watchlist_id_value = review.request_payload.get("watchlist_id")
+        watchlist_id = (
+            watchlist_id_value
+            if isinstance(watchlist_id_value, int)
+            and not isinstance(watchlist_id_value, bool)
+            and watchlist_id_value > 0
+            else None
+        )
+        return PortfolioAiReviewHistoryItem(
+            history_id=history_id,
+            generated_at=review.generated_at,
+            mode=review.mode,
+            mode_label=MODE_LABELS[review.mode],
+            analysis_mode=review.analysis_mode,
+            target=target,
+            target_label=TARGET_LABELS[target],
+            status=review.status,
+            status_label=STATUS_LABELS[review.status],
+            holdings_source=review.holdings_source,
+            stock_count=len(stock_labels),
+            stocks_preview=stock_labels[:3],
+            summary=summary,
+            model=review.model,
+            watchlist_id=watchlist_id,
+            include_web_search=review.include_web_search,
+            web_search_used=review.web_search_used,
+            mock_response=review.mock_response,
+            cache_hit=review.cache_hit,
+            estimated_cost_usd=max(review.estimated_cost_usd, 0),
+        )
+
+    @staticmethod
+    def _history_target(review: PortfolioAiReviewResponse) -> AiReviewHistoryTarget:
+        supported_targets = {"holdings", "watchlist", "candidates", "selected", "mock"}
+        for source in (review.request_payload, review.input_summary):
+            value = str(source.get("target", "")).strip().lower()
+            if value in supported_targets:
+                return value  # type: ignore[return-value]
+        source_fallbacks: dict[HoldingsSource, AiReviewHistoryTarget] = {
+            "request": "selected",
+            "database": "holdings",
+            "watchlist": "watchlist",
+            "candidates": "candidates",
+            "mock": "mock",
+            "none": "unknown",
+        }
+        return source_fallbacks.get(review.holdings_source, "unknown")
+
+    @classmethod
+    def _history_stock_labels(cls, review: PortfolioAiReviewResponse) -> list[str]:
+        trusted_names: dict[str, str] = {}
+        for item in (*review.holdings_snapshot, *review.candidates_snapshot):
+            ticker = str(item.ticker).strip().upper()
+            aliases = cls._security_code_aliases(ticker)
+            name = " ".join(str(item.name).split())
+            if not name or name.upper() in aliases:
+                continue
+            for alias in aliases:
+                trusted_names.setdefault(alias, name)
+
+        labels: list[str] = []
+        seen: set[str] = set()
+        for item in (*review.stocks, *review.holdings_snapshot, *review.candidates_snapshot):
+            ticker = str(item.ticker).strip().upper()
+            public_ticker = cls._public_security_code(ticker)
+            if not public_ticker or public_ticker in seen:
+                continue
+            seen.add(public_ticker)
+            trusted_name = next(
+                (
+                    trusted_names[alias]
+                    for alias in cls._security_code_aliases(ticker)
+                    if alias in trusted_names
+                ),
+                public_ticker,
+            )
+            labels.append(cls._security_label(trusted_name, ticker))
+        return labels
+
+    @classmethod
+    def _security_label(cls, name: str, ticker: str) -> str:
+        normalized_name = " ".join(str(name).split())
+        normalized_ticker = str(ticker).strip()
+        public_ticker = cls._public_security_code(normalized_ticker)
+        if not normalized_name or normalized_name in {normalized_ticker, public_ticker}:
+            return public_ticker
+        return f"{normalized_name}（{public_ticker}）"
+
+    def _build_ai_review_markdown(self, history_id: str, review: PortfolioAiReviewResponse) -> str:
+        target = self._history_target(review)
+        mode_label = MODE_LABELS[review.mode]
+        status_label = STATUS_LABELS[review.status]
+        lines = [
+            f"# AIレビュー履歴：{self._markdown_inline(mode_label)}",
+            "",
+            f"- 履歴ID: `{history_id}`",
+            f"- 回答生成日時: {self._markdown_inline(review.generated_at.isoformat())}",
+            f"- 分析方法: {self._markdown_inline(mode_label)} (`{review.mode}`)",
+            f"- 対象: {self._markdown_inline(TARGET_LABELS[target])}",
+            f"- 状態: {self._markdown_inline(status_label)} (`{review.status}`)",
+            f"- モデル: {self._markdown_inline(review.model or '未記録')}",
+            f"- reasoning: {self._markdown_inline(review.reasoning_effort or '未記録')}",
+            f"- Web検索: {'使用済み' if review.web_search_used else ('有効' if review.include_web_search else 'なし')}",
+            f"- 実行前概算: ${review.estimated_cost_usd:.4f}",
+            "",
+        ]
+
+        def add_text(title: str, value: Any, *, level: int = 3) -> None:
+            if not str(value or "").strip():
+                return
+            lines.extend([f"{'#' * level} {title}", "", self._markdown_inline(value), ""])
+
+        def add_list(title: str, values: list[Any], *, level: int = 3) -> None:
+            cleaned: list[Any] = []
+            seen_values: set[str] = set()
+            for value in values:
+                normalized = str(value or "").strip()
+                if not normalized or normalized in seen_values:
+                    continue
+                seen_values.add(normalized)
+                cleaned.append(value)
+            if not cleaned:
+                return
+            lines.extend([f"{'#' * level} {title}", ""])
+            lines.extend(f"- {self._markdown_inline(value)}" for value in cleaned)
+            lines.append("")
+
+        portfolio = review.portfolio_summary
+        lines.extend(
+            [
+                "## ポートフォリオ総合判断",
+                "",
+                f"- 市場温度感: {self._markdown_inline(portfolio.market_temperature)}",
+                f"- 総合リスク: {self._markdown_inline(portfolio.overall_risk)}",
+                "",
+            ]
+        )
+        add_text("総合見解", portfolio.overall_view)
+        add_text("要約", portfolio.portfolio_summary)
+        add_text("集中リスク", portfolio.concentration_risk)
+        add_text("現金配分", portfolio.cash_allocation_view)
+        add_list("テーマ偏り", portfolio.theme_exposure)
+
+        security_labels = {
+            stock.ticker: self._security_label(stock.name, stock.ticker)
+            for stock in review.stocks
+        }
+
+        def resolve_references(values: list[str]) -> list[str]:
+            return [security_labels.get(str(value).strip(), str(value)) for value in values]
+
+        add_list("買い候補", resolve_references(portfolio.buy_candidates))
+        add_list("売却・縮小候補", resolve_references(portfolio.sell_or_reduce_candidates))
+        add_list("保有優先", resolve_references(portfolio.hold_priority))
+        add_list("毎日見られない場合の縮小候補", resolve_references(portfolio.non_monitoring_reduce_candidates))
+        add_list("コア候補", resolve_references(portfolio.core_position_candidates))
+        add_list("入れ替え候補", resolve_references(portfolio.exit_or_rotate_candidates))
+        add_list("ポートフォリオの主なリスク", portfolio.top_risks)
+        add_list("今日の行動案", portfolio.action_plan_today)
+        add_text("ポートフォリオ判断の反証条件", portfolio.invalidation_for_portfolio)
+
+        add_list("具体的な執行案", review.action_plan, level=2)
+        add_list("重要警告", review.critical_warnings, level=2)
+
+        if review.stocks:
+            lines.extend(["## 銘柄別分析", ""])
+        stock_text_fields = (
+            ("判断理由", "short_reason"),
+            ("テクニカル", "technical_view"),
+            ("ニュース", "news_view"),
+            ("市場環境", "market_context_view"),
+            ("需給", "supply_demand_view"),
+            ("保有者の行動", "holder_action"),
+            ("買い増し条件", "buy_more_condition"),
+            ("利確条件", "take_profit_condition"),
+            ("損切り・縮小条件", "stop_or_reduce_condition"),
+            ("反証条件", "invalidation"),
+            ("強気ケース", "bullish_case"),
+            ("弱気ケース", "bearish_case"),
+            ("基本ケース", "base_case"),
+            ("期待値", "expected_value_view"),
+            ("ポジションサイズリスク", "position_size_risk"),
+            ("イベントリスク", "event_risk"),
+            ("ギャップリスク", "gap_risk"),
+            ("判断期限", "decision_deadline"),
+            ("判断を変える条件", "what_would_change_my_mind"),
+            ("最終判断", "final_recommendation_for_holder"),
+            ("不確実性", "uncertainty_notes"),
+        )
+        stock_list_fields = (
+            ("重要点", "key_points"),
+            ("主要リスク", "key_risks"),
+            ("監視点", "watch_points"),
+            ("警戒フラグ", "risk_flags"),
+            ("価格水準", "next_price_levels"),
+            ("リスク", "risks"),
+            ("執行計画", "execution_plan"),
+            ("辛口チェック", "critical_check"),
+            ("検証ラベル", "verification_labels"),
+        )
+        for stock in review.stocks:
+            label = self._security_label(stock.name, stock.ticker)
+            lines.extend(
+                [
+                    f"### {self._markdown_inline(label)}",
+                    "",
+                    f"- 判定: {self._markdown_inline(stock.judgement_label or stock.judgement)}",
+                    f"- 確信度: {stock.confidence:.0%}",
+                    f"- 非監視保有リスク: {self._markdown_inline(stock.non_monitoring_hold_risk)}",
+                    "",
+                ]
+            )
+            follow_up_modes: list[str] = []
+            if stock.needs_detail_analysis:
+                follow_up_modes.append("詳細分析")
+            if stock.needs_analyst_mode:
+                follow_up_modes.append("個別詳細分析")
+            if stock.needs_judge_mode:
+                follow_up_modes.append("全体売買判断")
+            if stock.needs_long_term_carry_check:
+                follow_up_modes.append("長期持越しチェック")
+            if follow_up_modes:
+                lines.append(
+                    "- 推奨フォローアップ: "
+                    + self._markdown_inline(" / ".join(follow_up_modes))
+                )
+                lines.append("")
+            for title, field_name in stock_text_fields:
+                add_text(title, getattr(stock, field_name), level=4)
+            if stock.time_horizon_views:
+                lines.extend(["#### 時間軸別見解", ""])
+                for horizon, view in stock.time_horizon_views.items():
+                    lines.append(
+                        f"- {self._markdown_inline(horizon)}: {self._markdown_inline(view)}"
+                    )
+                lines.append("")
+            for title, field_name in stock_list_fields:
+                add_list(title, getattr(stock, field_name), level=4)
+            carry = stock.long_term_carry_check
+            carry_scalar_values = (
+                carry.can_hold_without_daily_monitoring,
+                carry.non_monitoring_hold_risk,
+                carry.business_thesis_strength,
+                carry.event_risk_while_unmonitored,
+                carry.liquidity_risk,
+                carry.volatility_risk,
+                carry.position_size_view,
+                carry.core_position_suitability,
+                carry.final_long_term_carry_decision,
+                carry.final_note,
+            )
+            carry_lists = (
+                carry.required_alerts,
+                carry.must_check_dates_or_events,
+                carry.reduce_before_events,
+                carry.stop_or_reduce_conditions,
+                carry.long_term_thesis_break_conditions,
+            )
+            has_carry_detail = (
+                any(str(value or "").strip() not in {"", "unknown"} for value in carry_scalar_values)
+                or carry.short_term_position_should_be_removed is not None
+                or any(carry_lists)
+                or bool(carry.monitoring_interval_view)
+            )
+            if has_carry_detail:
+                lines.extend(["#### 長期持越しチェック", ""])
+                carry_fields = (
+                    ("毎日見られない場合の保有可否", carry.can_hold_without_daily_monitoring),
+                    ("非監視保有リスク", carry.non_monitoring_hold_risk),
+                    ("事業仮説の強さ", carry.business_thesis_strength),
+                    ("非監視中のイベントリスク", carry.event_risk_while_unmonitored),
+                    ("流動性リスク", carry.liquidity_risk),
+                    ("変動リスク", carry.volatility_risk),
+                    ("ポジションサイズ", carry.position_size_view),
+                    ("コア適性", carry.core_position_suitability),
+                    ("最終持越し判断", carry.final_long_term_carry_decision),
+                )
+                for field_label, field_value in carry_fields:
+                    normalized_value = str(field_value or "").strip()
+                    if normalized_value and normalized_value != "unknown":
+                        lines.append(
+                            f"- {field_label}: {self._markdown_inline(normalized_value)}"
+                        )
+                if carry.short_term_position_should_be_removed is not None:
+                    lines.append(
+                        "- 短期玉の除外: "
+                        + ("必要" if carry.short_term_position_should_be_removed else "不要")
+                    )
+                lines.append("")
+                carry_list_fields = (
+                    ("必要なアラート", carry.required_alerts),
+                    ("確認必須日・イベント", carry.must_check_dates_or_events),
+                    ("イベント前の縮小", carry.reduce_before_events),
+                    ("損切り・縮小条件", carry.stop_or_reduce_conditions),
+                    ("長期仮説の崩壊条件", carry.long_term_thesis_break_conditions),
+                )
+                for field_label, field_values in carry_list_fields:
+                    add_list(field_label, field_values, level=5)
+                if carry.monitoring_interval_view:
+                    lines.extend(["##### 非監視期間別の保有可否", ""])
+                    for interval_view in carry.monitoring_interval_view:
+                        interval_summary = (
+                            f"{interval_view.interval}: {interval_view.holdability}"
+                        )
+                        lines.append(f"- {self._markdown_inline(interval_summary)}")
+                        if interval_view.required_conditions:
+                            required = " / ".join(interval_view.required_conditions)
+                            lines.append(f"  - 必要条件: {self._markdown_inline(required)}")
+                        if interval_view.pre_actions:
+                            actions = " / ".join(interval_view.pre_actions)
+                            lines.append(f"  - 事前対応: {self._markdown_inline(actions)}")
+                    lines.append("")
+                add_text("最終補足", carry.final_note, level=5)
+            if stock.sources:
+                lines.extend(["#### この銘柄の情報源", ""])
+                lines.extend(f"- {self._markdown_source(source)}" for source in stock.sources)
+                lines.append("")
+
+        if review.sources:
+            lines.extend(["## 情報源", ""])
+            lines.extend(f"- {self._markdown_source(source)}" for source in review.sources)
+            lines.append("")
+
+        add_list("警告", review.warnings, level=2)
+
+        if review.error is not None:
+            lines.extend(
+                [
+                    "## エラー情報",
+                    "",
+                    f"- code: `{review.error.code}`",
+                    f"- message: {self._markdown_inline(review.error.message)}",
+                    "",
+                ]
+            )
+        if review.raw_model_output:
+            lines.extend(["## OpenAI生応答（調査用）", ""])
+            lines.extend(self._markdown_code_block(review.raw_model_output, language="text"))
+            lines.append("")
+        if review.manual_prompt:
+            lines.extend(["## ChatGPT投入用プロンプト", ""])
+            lines.extend(self._markdown_code_block(review.manual_prompt, language="text"))
+            lines.append("")
+
+        lines.extend(
+            [
+                "> この出力は日本株の判断補助であり、自動売買や断定的な投資助言ではありません。",
+                "",
+            ]
+        )
+        return "\n".join(lines)
+
+    @staticmethod
+    def _markdown_inline(value: Any) -> str:
+        escaped = html.escape(str(value), quote=False).replace("\\", "\\\\")
+        for marker in ("`", "*", "_", "{", "}", "[", "]", "(", ")", "#", "+", "-", ".", "!", "|", ">", "~"):
+            escaped = escaped.replace(marker, f"\\{marker}")
+        return escaped.replace("\r\n", "\n").replace("\r", "\n").replace("\n", "  \n")
+
+    @classmethod
+    def _markdown_source(cls, source: PortfolioAiReviewSource) -> str:
+        title = cls._markdown_inline(source.title or "情報源")
+        safe_url = cls._safe_http_url(source.url)
+        if safe_url is None:
+            return f"{title}（HTTP\\(S\\)以外のURLはリンク省略）"
+        return f"[{title}]({safe_url})"
+
+    @staticmethod
+    def _safe_http_url(value: str) -> str | None:
+        raw_url = str(value).strip()
+        if not raw_url or any(ord(character) < 32 for character in raw_url):
+            return None
+        try:
+            parsed = urlsplit(raw_url)
+        except ValueError:
+            return None
+        if parsed.scheme.lower() not in {"http", "https"} or not parsed.netloc:
+            return None
+        if parsed.username is not None or parsed.password is not None:
+            return None
+        return quote(raw_url, safe=":/?#[]@!$&'*+,;=%")
+
+    @staticmethod
+    def _markdown_code_block(value: str, *, language: str = "") -> list[str]:
+        longest_run = max((len(match.group(0)) for match in re.finditer(r"`+", value)), default=0)
+        fence = "`" * max(3, longest_run + 1)
+        return [f"{fence}{language}", value, fence]
+
     def _cache_key(self, request_payload: dict[str, Any]) -> str:
         raw = json.dumps(request_payload, ensure_ascii=False, sort_keys=True)
         return hashlib.sha256(raw.encode("utf-8")).hexdigest()
@@ -2089,10 +2653,17 @@ class PortfolioAiReviewService:
             cache = dict(list(cache.items())[-50:])
         self._write_json(AI_REVIEW_CACHE_PATH, cache)
 
-    def _append_json_list(self, path: Path, item: dict[str, Any], *, limit: int) -> None:
-        data = self._read_json_list(path)
-        data.append(item)
-        self._write_json(path, data[-limit:])
+    def _append_json_list(self, path: Path, item: dict[str, Any], *, limit: int) -> bool:
+        with AI_REVIEW_HISTORY_LOCK:
+            data, invalid_root = self._read_json_list_state(path)
+            if invalid_root:
+                logger.warning(
+                    "Refusing to overwrite invalid AI review history JSON path=%s",
+                    path,
+                )
+                return False
+            data.append(item)
+            return self._write_json(path, data[-limit:])
 
     def _read_json_object(self, path: Path) -> dict[str, Any]:
         if not path.exists():
@@ -2105,22 +2676,51 @@ class PortfolioAiReviewService:
         return data if isinstance(data, dict) else {}
 
     def _read_json_list(self, path: Path) -> list[dict[str, Any]]:
-        if not path.exists():
-            return []
-        try:
-            with path.open("r", encoding="utf-8") as file:
-                data = json.load(file)
-        except (OSError, json.JSONDecodeError):
-            return []
-        return data if isinstance(data, list) else []
+        data, _ = self._read_json_list_state(path)
+        return [item for item in data if isinstance(item, dict)]
 
-    def _write_json(self, path: Path, data: Any) -> None:
+    def _read_json_list_state(self, path: Path) -> tuple[list[Any], bool]:
+        """Return a list plus a root-corruption flag under the history lock."""
+
+        with AI_REVIEW_HISTORY_LOCK:
+            if not path.exists():
+                return [], False
+            try:
+                with path.open("r", encoding="utf-8") as file:
+                    data = json.load(file)
+            except (OSError, json.JSONDecodeError):
+                return [], True
+            if not isinstance(data, list):
+                return [], True
+            return data, False
+
+    def _write_json(self, path: Path, data: Any) -> bool:
+        temp_path: Path | None = None
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
-            with path.open("w", encoding="utf-8") as file:
+            with tempfile.NamedTemporaryFile(
+                "w",
+                encoding="utf-8",
+                dir=path.parent,
+                prefix=f".{path.name}.",
+                suffix=".tmp",
+                delete=False,
+            ) as file:
+                temp_path = Path(file.name)
                 json.dump(data, file, ensure_ascii=False, indent=2)
-        except OSError as exc:
+                file.flush()
+                os.fsync(file.fileno())
+            os.replace(temp_path, path)
+            return True
+        except (OSError, TypeError, ValueError) as exc:
             logger.warning("Failed to write AI review local JSON %s: %s", path, exc.__class__.__name__)
+            return False
+        finally:
+            if temp_path is not None:
+                try:
+                    temp_path.unlink(missing_ok=True)
+                except OSError:
+                    logger.warning("Failed to clean up AI review temporary JSON: %s", temp_path)
 
     def _extract_usage(
         self,
@@ -2305,8 +2905,8 @@ def parse_ai_review_result(raw_output: str, options: PortfolioAiReviewRequest | 
     return portfolio_ai_review_service.parse_ai_review_result(raw_output, options=options)
 
 
-def save_ai_review_result(response: PortfolioAiReviewResponse) -> None:
-    portfolio_ai_review_service.save_ai_review_result(response)
+def save_ai_review_result(response: PortfolioAiReviewResponse) -> bool:
+    return portfolio_ai_review_service.save_ai_review_result(response)
 
 
 def analyze_portfolio_with_openai(

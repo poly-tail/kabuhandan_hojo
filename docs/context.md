@@ -1,5 +1,14 @@
 # Context
 
+## 2026-08-19 legacy保存済みAI結果 addendum
+
+- dashboard legacy stock-reviewの`save_result=true`で新規生成したresponseを、git管理外の`data/ai_review_history.json`へ最大100件保持し、保存順の新しいものからmode別に一覧表示する。`save_result=false`とcache hitは新しい履歴を作らない。
+- list APIはmode / target / status filterとlimit / offsetを持つmetadata-only projectionで、summaryもmodel本文ではなく決定的metadata文とする。detailは`{history_id, review}` envelopeから`request_payload`を除外し、Markdown exportはsafe attachment headerとescapingを使う。
+- prompt / mock / live / raw fallbackの履歴保存失敗は生成成功と分離し、生成済み回答を返したまま固定warningを1回追加し、そのresponseをcacheへ保存しない。不正entryはread時にskip/countし、不正rootは上書きしない。通常appendは同一process `RLock`とatomic replaceを使い、multiprocess hard guaranteeは持たない。
+- dashboardはmode filter、分類一覧、detail、`.md`保存、別タブ印刷を提供する。PDFはbrowser印刷で保存し、server-side PDF生成は行わない。raw fallbackを先頭20,000文字へ省略した場合は全文Markdownを案内し、印刷cloneではraw `details`をopenにする。
+- 履歴read / export / printはOpenAI、usage、quota、cacheを変更しない。過去のcode-only銘柄参照はfile非変更でread時補完するが、旧recordにないnamed watchlist名は現行collectionから推測復元しない。
+- この追加はlegacy stock-review専用で、canonical個別銘柄AIの保存record一覧・exportを追加しない。現行baselineは要件v2.1、API v2.4、画面v2.8、変更単位`SC-2026-08-19-06`である。SC-2026-08-19-04の履歴非対象はlegacy保存履歴についてだけ本変更が置き換え、client-only現在回答readerの契約は維持する。
+
 ## 2026-08-19 Portfolio・複数named watchlist addendum
 
 - dashboardはPortfolioと単一Watchlistの別panelを、native selectorで切り替える1つの全幅「保有・ウォッチリスト管理」spaceへ統合する。queryなしの既定表示はPortfolioで、Portfolio storageとwatchlist storageは統合しない。
@@ -11,7 +20,7 @@
 - selector / collection / active membership / checkbox mutationは旧AI結果と進行中responseを無効化する。dashboardもrequested scopeとactive scopeを照合し、Portfolio復帰時はdefault monitoring scopeをreloadする。これらは追加OpenAI callを行わないclient consistency境界である。
 - collectionは認証・利用者分離のないapp-global dataである。既定loopbackとtrusted local利用を前提とし、Internetへ直接公開しない。認証、ownership、rate limit、list固有memo / thesis、Portfolio同期は今回追加しない。
 - default collectionの初回migrationは単一application processを前提とし、未初期化PostgreSQLへ複数processが同時起動する競合のserialize / retryは未実装である。
-- 現行baselineは要件v2.0、API v2.3、画面v2.7、変更単位`SC-2026-08-19-05`である。v2.6のclient-only legacy回答readerとcanonical個別銘柄AIは維持する。
+- この変更単位`SC-2026-08-19-05`のbaselineは要件v2.0、API v2.3、画面v2.7である。現在版は上記SC-2026-08-19-06を参照し、v2.6のclient-only legacy回答readerとcanonical個別銘柄AIは引き続き維持する。
 
 ## 2026-08-19 legacy AI銘柄identity addendum
 

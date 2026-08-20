@@ -1,5 +1,16 @@
 # Folder Structure
 
+## 2026-08-19 legacy保存済みAI結果 addendum
+
+- `app/schemas/portfolio_ai.py`: legacy保存履歴のmetadata item、list集計 / pagination、detail envelope schema。
+- `app/services/portfolio_ai_review.py`: git管理外`data/ai_review_history.json`の最大100件保存、safe read、deterministic ID / summary、detail projection、Markdown export、save失敗warning。
+- `app/api/routes/portfolio.py`: legacy履歴list / detail / `export.md`のread-only endpointとsafe response header。
+- `app/api/routes/ui.py`: dashboard履歴section、mode別一覧、detail、Markdown保存、別タブ印刷 / PDF導線、20,000文字raw previewと印刷details展開。
+- `tests/unit/test_ai_review_history.py`: 履歴保存・read・filter・export・破損 / atomicityの専用test。
+- `tests/unit/test_mock_ui.py`: 履歴一覧 / detail / Markdown / PDF readerとraw previewのUI契約test。
+- `docs/requirements/requirements_v2.1.md` / `docs/specs/api_spec_v2.4.md` / `docs/screen_specs/screen_spec_v2.8.md`: `SC-2026-08-19-06`の累積baseline。旧versioned文書は不変で保持する。
+- `data/ai_review_history.json`: runtime専用のローカル履歴。Git管理・公開・documentation assetの対象外。
+
 ## 2026-08-19 Portfolio・複数named watchlist addendum
 
 - `app/models/watchlist.py` / `src/kabuhandan_hojo/models/entities.py`: ticker-level item、collection、membership entity。memo / thesisはitem共有、sort / activeはmembership固有。

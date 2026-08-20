@@ -1,6 +1,6 @@
 # Requirements Current
 
-> 現在の正本: `requirements_v2.0.md`
+> 現在の正本: `requirements_v2.1.md`
 
 ## 概要
 
@@ -9,9 +9,9 @@
 
 ## 現在値
 
-- 要件仕様書: v2.0
+- 要件仕様書: v2.1
 - 更新日: 2026-08-19
-- 変更概要: Portfolioと複数named watchlistの単一管理space、collection / membership、default一度限りmigration、検索・dashboard・detail / chart・legacy AIのcollection scopeを追加
+- 変更概要: legacy stock-review保存履歴の最大100件、metadata一覧・詳細・Markdown export・別タブ印刷 / PDF表示を追加
 
 ## 主な内容
 
@@ -49,6 +49,11 @@
 - legacyの`stocks[].name`とsummaryの6つの銘柄参照listをlive/mock/cache共通で正規化し、unknown codeを`名称未登録（code）`とすること
 - legacy stock cardとsummaryで公開codeを使い、canonical prompt v2026.08.18を添付旧版へ戻さないこと
 - legacy日次上限の1回を、銘柄数ではなく正常完了した一括review 1件と定義すること
+- legacy履歴は`save_result=true`の新規responseだけを最大100件保存し、`save_result=false`とcache hitでは増やさないこと
+- legacy履歴一覧は保存順の新しいものから返すmetadata onlyとし、mode / target / status filterとpaginationを持ち、model本文をsummaryへ使わないこと
+- legacy履歴detailは`request_payload`を除外し、Markdownはsafe attachment / escape、画面はmode別一覧・detail・別タブ印刷によるPDF保存を提供すること
+- legacy履歴保存失敗でも回答を維持してsafe warningを返し、履歴read / export / printはOpenAI、quota、usage、cacheを変更しないこと
+- 旧legacy recordに保存されていないnamed watchlist名を現行stateから推測復元しないこと
 - provider API call、token、実Web検索、未算定callをreview quotaと分離してJST日次・月次集計すること
 - 概算額は正式請求ではなく、OpenAI PlatformのUsage Dashboardを正本とすること
 - 基幹sourceを J-Quants / EDINET API / YouTube Data API / allowlist公式IRに限定すること
@@ -61,7 +66,7 @@
 - Responses Application State保存を`store=false`で無効化し、ZDR全体の保証とは区別すること
 - 既定bindを`127.0.0.1`、DB初期化をlifespanの1回とすること
 - 保存recordへ生成設定とprompt traceを残し、APIキー、prompt全文、provider raw response / errorを保存しないこと
-- `request_id`を知る回答1件だけを別ウィンドウで再表示し、一覧・削除・exportは提供しないこと
+- canonical個別銘柄AIは`request_id`を知る回答1件だけを別ウィンドウで再表示し、一覧・削除・exportは提供しないこと
 - AI送信中は銘柄・質問入力をロックし、canonical responseはvalidation errorを含めて`no-store`にすること
 - 新経路ではmock / cache / fallback / Web検索 / Structured Outputsを使わないこと
 - 既存Portfolio multi-mode / Prompt Registry経路はlegacy機能として維持すること

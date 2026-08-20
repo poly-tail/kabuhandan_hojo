@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-08-19 legacy saved AI history / Markdown / PDF print
+
+- `GET /api/ai/stock-review/history`を追加し、legacy保存履歴を保存順の新しいものから、mode / target / status filter、limit / offset付きのmetadata-only一覧として返すようにした。filter前`mode_counts`、filter後pagination前`total`、保存総数、invalid件数を分離し、summaryはmodel本文ではなく決定的metadata文にした。
+- `GET /api/ai/stock-review/history/{history_id}`は64hex SHA-256 IDで1件を返し、`request_payload`を除外する。旧code-only参照は履歴fileを書き換えずread時だけ正式名称・公開codeへ補完する。
+- `GET /api/ai/stock-review/history/{history_id}/export.md`を追加した。semantic UTF-8 Markdown、安全なASCII attachment filename、no-store / nosniff / no-referrer、HTML / Markdown escape、HTTP(S) link allowlist、可変長raw fenceを実装した。
+- historyはgit管理外`data/ai_review_history.json`へ最大100件を保持する。`save_result=true`の新規responseだけを追加し、`save_result=false`とcache hitでは増やさない。prompt / mock / live / raw fallbackの保存失敗時は生成回答を維持し、OpenAI再呼び出しなしでsafe warningを1回追加し、そのresponseをcacheへ保存しない。
+- 不正entryはskip/countし、不正rootは上書きしない。通常appendは同一processの`RLock`とtemp / fsync / `os.replace`でatomicに更新するが、multiprocess hard guaranteeは持たない。
+- dashboardへ`保存済みAI結果`を追加し、mode別一覧 / filter、detail、prompt-only、Markdown保存、別タブ印刷によるPDF保存を提供した。raw fallbackは画面先頭20,000文字へ制限する場合に省略と全文Markdownを案内し、印刷cloneではraw `details`をopenにする。
+- 履歴read / export / printはOpenAI、quota、usage、cache、Web Storageを変更しない。旧recordに実行時named watchlist名がないため、現行名を推測復元しない。canonical個別銘柄AIの保存readerは変更していない。
+- 要件v2.1、API v2.4、画面v2.8、`SC-2026-08-19-06`を追加し、旧versioned文書を変更せずcurrent baselineを更新する。SC-2026-08-19-04の履歴非対象はlegacy保存履歴について本変更が置き換え、client-only現在回答readerは維持する。
+
 ## 2026-08-19 Portfolio・複数named watchlist management
 
 - `watchlist_collection`と`watchlist_membership`を追加し、既存ticker-level `watchlist` rowを複数named listから共有できるようにした。同じtickerは複数listへ所属でき、memo / thesisはsecurity-level共有、membershipのsort / activeはlist固有である。

@@ -514,6 +514,93 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
         display: none;
       }
 
+      .ai-history-panel {
+        display: grid;
+        gap: 16px;
+      }
+
+      .ai-history-toolbar {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+
+      .ai-history-toolbar .input {
+        width: min(320px, 100%);
+      }
+
+      .ai-history-groups, .ai-history-group, .ai-history-list, .ai-history-detail {
+        display: grid;
+        gap: 14px;
+        min-width: 0;
+      }
+
+      .ai-history-group-heading {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        margin: 0;
+        font-size: 17px;
+      }
+
+      .ai-history-item {
+        display: grid;
+        gap: 10px;
+        min-width: 0;
+        padding: 16px;
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        background: rgba(255, 255, 255, 0.72);
+        overflow-wrap: anywhere;
+      }
+
+      .ai-history-item.error {
+        border-color: rgba(184, 92, 47, 0.32);
+        background: rgba(184, 92, 47, 0.06);
+      }
+
+      .ai-history-item-heading {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        align-items: baseline;
+        justify-content: space-between;
+      }
+
+      .ai-history-item-title {
+        margin: 0;
+        font-size: 16px;
+        line-height: 1.45;
+      }
+
+      .ai-history-summary {
+        margin: 0;
+        color: #30423d;
+        line-height: 1.65;
+        white-space: pre-wrap;
+      }
+
+      .ai-history-prompt {
+        max-height: 520px;
+        margin: 0;
+        padding: 14px;
+        overflow: auto;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: #f8faf9;
+        color: var(--ink);
+        font-family: ui-monospace, "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+        font-size: 13px;
+        line-height: 1.6;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+      }
+
+      .ai-history-detail[hidden] {
+        display: none;
+      }
+
       .ai-review-card {
         display: grid;
         gap: 14px;
@@ -1119,6 +1206,51 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
           </div>
         </section>
 
+        <section class="panel ai-history-panel" id="stock-ai-history-panel">
+          <div class="section-head">
+            <div>
+              <div class="eyebrow">Saved AI Results</div>
+              <h2>保存済みAI結果</h2>
+            </div>
+            <div class="ai-history-toolbar">
+              <label for="stock-ai-history-mode" class="subtle">分析方法</label>
+              <select class="input" id="stock-ai-history-mode" aria-label="保存済みAI結果の分析方法">
+                <option value="all">すべての分析方法</option>
+                <option value="scanner">軽量スキャン</option>
+                <option value="analyst">個別詳細分析</option>
+                <option value="judge">全体売買判断</option>
+                <option value="critical">重要局面分析</option>
+                <option value="prompt_only">ChatGPT投入用プロンプト生成</option>
+              </select>
+              <button class="ghost-button" type="button" data-stock-ai-history-refresh="true">履歴を更新</button>
+            </div>
+          </div>
+          <p class="subtle">「結果保存」が有効だったlegacy stock-reviewの直近100件を、保存順の新しいものから分析方法別に表示します。前回結果（キャッシュ）の再表示は重複保存しません。PDFは印刷用画面を開き、ブラウザの印刷で「PDFに保存」を選んでください。</p>
+          <div class="search-feedback" id="stock-ai-history-feedback" aria-live="polite"></div>
+          <div class="ai-history-groups" id="stock-ai-history-list" aria-live="polite" aria-busy="true"></div>
+          <section class="ai-history-detail" id="stock-ai-history-detail" aria-labelledby="stock-ai-history-detail-heading" hidden>
+            <div class="section-head" style="margin-bottom: 0;">
+              <div>
+                <div class="eyebrow">Saved Result</div>
+                <h3 id="stock-ai-history-detail-heading">保存済み結果</h3>
+              </div>
+              <div class="section-actions">
+                <a
+                  class="action-link ai-review-reader-link"
+                  id="stock-ai-history-reader-link"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  referrerpolicy="no-referrer"
+                  hidden
+                >別タブ表示・PDF保存（印刷）</a>
+                <a class="action-link" id="stock-ai-history-markdown-link" download hidden>Markdown保存</a>
+              </div>
+            </div>
+            <div class="search-feedback" id="stock-ai-history-detail-feedback" aria-live="polite"></div>
+            <div class="ai-review-grid" id="stock-ai-history-detail-results" aria-live="polite" aria-busy="false"></div>
+          </section>
+        </section>
+
         <div class="list-grid">
           <section class="panel">
             <div class="section-head">
@@ -1257,6 +1389,18 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
           data: null,
           error: null,
         },
+        stockAiHistory: {
+          status: "loading",
+          data: null,
+          error: null,
+        },
+        stockAiHistoryDetail: {
+          status: "idle",
+          data: null,
+          error: null,
+          historyId: null,
+          readerTitle: null,
+        },
         watchlistAiReview: {
           status: "idle",
           data: null,
@@ -1268,6 +1412,8 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
         collectionFormMode: null,
         dashboardRequestId: 0,
         stockAiRequestId: 0,
+        stockAiHistoryRequestId: 0,
+        stockAiHistoryDetailRequestId: 0,
       };
 
       const AI_REVIEW_READER_CONFIG = Object.freeze({
@@ -1282,6 +1428,12 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
           linkId: "watchlist-ai-review-reader-link",
           feedbackId: "watchlist-ai-review-feedback",
           title: "ウォッチリストAI分析結果",
+        },
+        history: {
+          resultId: "stock-ai-history-detail-results",
+          linkId: "stock-ai-history-reader-link",
+          feedbackId: "stock-ai-history-detail-feedback",
+          title: "保存済みAI分析結果",
         },
       });
       const aiReviewReaderObjectUrls = new Map();
@@ -1523,7 +1675,7 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
         heading.textContent = config.title;
         const note = readerDocument.createElement("p");
         note.className = "ai-reader-note";
-        note.textContent = "この画面を開いた時点の回答です。ブラウザの印刷機能も利用できます。";
+        note.textContent = "この画面を開いた時点の回答です。PDFに保存する場合は、ブラウザの印刷（Ctrl+P）で「PDFに保存」を選んでください。";
         header.append(heading, note);
 
         const resultSection = readerDocument.createElement("section");
@@ -1536,7 +1688,11 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
         const content = readerDocument.createElement("div");
         content.className = "ai-review-grid ai-reader-content";
         Array.from(sourceElement.children).forEach((child) => {
-          content.appendChild(child.cloneNode(true));
+          const clonedChild = child.cloneNode(true);
+          clonedChild.querySelectorAll("details.ai-raw-output").forEach((details) => {
+            details.open = true;
+          });
+          content.appendChild(clonedChild);
         });
         resultSection.append(sectionHeading, content);
         main.append(header, resultSection);
@@ -1805,11 +1961,15 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
       };
 
       const renderAiRawFallback = (rawOutput) => {
-        if (!String(rawOutput ?? "").trim()) return "";
+        const rawText = String(rawOutput ?? "");
+        if (!rawText.trim()) return "";
+        const displayLimit = 20000;
+        const truncated = rawText.length > displayLimit;
         return `
           <details class="ai-raw-output">
-            <summary>OpenAI生応答（解析できなかった内容）</summary>
-            <pre class="ai-raw-content">${escapeHtml(String(rawOutput).slice(0, 20000))}</pre>
+            <summary>OpenAI生応答（解析できなかった内容）${truncated ? "・画面は先頭20,000文字" : ""}</summary>
+            <pre class="ai-raw-content">${escapeHtml(rawText.slice(0, displayLimit))}</pre>
+            ${truncated ? '<p class="subtle">全文は「Markdown保存」で確認できます。</p>' : ""}
           </details>
         `;
       };
@@ -1871,7 +2031,9 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
           : summary.market_temperature;
         const chips = [
           data.web_search_used ? "Web検索あり" : "Web検索なしの簡易分析",
-          data.mock_response ? "API非呼び出しmock" : "OpenAI API",
+          data.mode === "prompt_only"
+            ? "OpenAI API非呼び出し"
+            : (data.mock_response ? "API非呼び出しmock" : "OpenAI API"),
           data.model ? `model ${data.model}` : "",
           data.reasoning_effort ? `reasoning ${data.reasoning_effort}` : "",
           data.web_search_policy ? `web policy ${data.web_search_policy}` : "",
@@ -2081,6 +2243,324 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
             ${renderAiSources(stock.sources || [])}
           </article>
         `;
+      };
+
+      const AI_HISTORY_MODE_ORDER = Object.freeze([
+        "scanner",
+        "analyst",
+        "judge",
+        "critical",
+        "prompt_only",
+      ]);
+
+      const safeStockAiHistoryId = (value) => {
+        const candidate = String(value ?? "").trim();
+        return /^[A-Za-z0-9_-]{8,128}$/.test(candidate) ? candidate : null;
+      };
+
+      const aiHistoryTargetLabel = (target) => ({
+        holdings: "保有銘柄",
+        watchlist: "ウォッチリスト",
+        candidates: "狙い中銘柄",
+        selected: "選択銘柄",
+        mock: "テスト用仮保有銘柄",
+      }[target] || target || "対象未確認");
+
+      const aiHistoryStockPreview = (stocks = [], stockCount = 0) => {
+        const labels = (stocks || []).map((stock) => {
+          if (typeof stock === "string") return stock.trim();
+          const name = String(stock?.name || "").trim();
+          const ticker = publicSecurityCode(stock?.ticker || stock?.ticker_code || "");
+          if (name && ticker) return `${name}（${ticker}）`;
+          return name || ticker;
+        }).filter(Boolean);
+        const normalizedCount = Number.isFinite(Number(stockCount))
+          ? Math.max(0, Math.trunc(Number(stockCount)))
+          : labels.length;
+        const remaining = Math.max(0, normalizedCount - labels.length);
+        if (!labels.length) return normalizedCount ? `${normalizedCount}銘柄` : "対象銘柄なし";
+        return `${labels.join("、")}${remaining ? `、ほか${remaining}銘柄` : ""}`;
+      };
+
+      const syncStockAiHistoryModeCounts = (data) => {
+        const select = document.getElementById("stock-ai-history-mode");
+        if (!select) return;
+        const counts = data?.mode_counts || {};
+        const total = Array.isArray(data?.items) ? data.items.length : Number(data?.total || 0);
+        Array.from(select.options).forEach((option) => {
+          if (option.value === "all") {
+            option.textContent = `すべての分析方法（${Math.max(0, Number(total) || 0)}）`;
+            return;
+          }
+          const count = Math.max(0, Number(counts[option.value]) || 0);
+          option.textContent = `${aiModeLabel(option.value)}（${count}）`;
+        });
+      };
+
+      const renderStockAiHistoryItem = (item) => {
+        const historyId = safeStockAiHistoryId(item?.history_id);
+        const mode = String(item?.mode || "");
+        const modeLabel = String(item?.mode_label || aiModeLabel(mode));
+        const targetLabel = String(item?.target_label || aiHistoryTargetLabel(item?.target));
+        const sourceLabel = aiHoldingsSourceLabel(item?.holdings_source);
+        const status = String(item?.status || "success");
+        const statusLabel = String(item?.status_label || aiReviewResultStatusLabel(item || {}));
+        const summary = String(item?.summary || "").trim().slice(0, 360);
+        const stockPreview = aiHistoryStockPreview(item?.stocks_preview || [], item?.stock_count);
+        const detailAction = historyId
+          ? `<button class="ghost-button" type="button" data-stock-ai-history-detail="${escapeAttr(historyId)}">結果を見る</button>`
+          : "";
+        const readerAction = historyId
+          && mode !== "prompt_only"
+          && ["success", "json_parse_failed"].includes(status)
+          ? `<button class="ghost-button" type="button" data-stock-ai-history-reader="${escapeAttr(historyId)}">別タブ表示・PDF保存</button>`
+          : "";
+        const markdownAction = historyId
+          ? `<a class="action-link" href="/api/ai/stock-review/history/${encodeURIComponent(historyId)}/export.md" download data-stock-ai-history-markdown="${escapeAttr(historyId)}">Markdown保存</a>`
+          : "";
+        const watchlistLabel = item?.watchlist_id
+          ? `<span class="chip">ウォッチリスト #${escapeHtml(item.watchlist_id)}</span>`
+          : "";
+        return `
+          <article class="ai-history-item${status === "success" ? "" : " error"}">
+            <div class="ai-history-item-heading">
+              <h4 class="ai-history-item-title">${escapeHtml(modeLabel)}・${escapeHtml(targetLabel)}</h4>
+              <span class="subtle">${escapeHtml(formatDateTime(item?.generated_at))}</span>
+            </div>
+            <div class="chips">
+              <span class="chip ${status === "success" ? "info" : "warn"}">${escapeHtml(statusLabel)}</span>
+              <span class="chip">${escapeHtml(sourceLabel)}</span>
+              <span class="chip">${escapeHtml(stockPreview)}</span>
+              ${item?.analysis_mode ? `<span class="chip">期間 ${escapeHtml(item.analysis_mode)}</span>` : ""}
+              ${item?.model ? `<span class="chip">model ${escapeHtml(item.model)}</span>` : ""}
+              <span class="chip">${item?.include_web_search ? "Web検索設定あり" : "Web検索なし"}</span>
+              ${item?.mock_response ? '<span class="chip warn">API非呼び出しmock</span>' : ""}
+              ${item?.cache_hit ? '<span class="chip">キャッシュ結果</span>' : ""}
+              ${watchlistLabel}
+            </div>
+            ${summary ? `<p class="ai-history-summary">${renderAiText(summary)}</p>` : ""}
+            ${historyId ? `<div class="section-actions">${detailAction}${readerAction}${markdownAction}</div>` : '<div class="search-feedback error">履歴IDが不正なため、この結果は開けません。</div>'}
+          </article>
+        `;
+      };
+
+      const renderStockAiHistory = () => {
+        const container = document.getElementById("stock-ai-history-list");
+        const feedback = document.getElementById("stock-ai-history-feedback");
+        if (!container || !feedback) return;
+        const history = state.stockAiHistory;
+        container.setAttribute("aria-busy", history.status === "loading" ? "true" : "false");
+
+        if (history.status === "loading" && !history.data) {
+          feedback.className = "search-feedback";
+          feedback.textContent = "保存済みAI結果を読み込み中...";
+          container.innerHTML = '<div class="empty">履歴を読み込んでいます。</div>';
+          return;
+        }
+        if (history.status === "failed" || !history.data) {
+          feedback.className = "search-feedback error";
+          feedback.textContent = `保存済みAI結果を取得できませんでした${history.error ? `: ${history.error}` : "。"}`;
+          container.innerHTML = '<div class="empty error">履歴APIを確認してください。新しいAI分析の実行には影響しません。</div>';
+          return;
+        }
+
+        const data = history.data;
+        const items = Array.isArray(data.items) ? [...data.items] : [];
+        syncStockAiHistoryModeCounts(data);
+        const selectedMode = document.getElementById("stock-ai-history-mode")?.value || "all";
+        const filteredItems = selectedMode === "all"
+          ? items
+          : items.filter((item) => item?.mode === selectedMode);
+        const invalidCount = Math.max(0, Number(data.invalid_count) || 0);
+        const storedCount = Math.max(0, Number(data.stored_count ?? items.length) || 0);
+        const retentionLimit = Math.max(0, Number(data.retention_limit) || 100);
+        feedback.className = invalidCount ? "search-feedback error" : "search-feedback success";
+        feedback.textContent = invalidCount
+          ? `保存済み ${storedCount}件（最大${retentionLimit}件）。読み込めない履歴 ${invalidCount}件は表示していません。`
+          : `保存済み ${storedCount}件（最大${retentionLimit}件）。一覧表示やエクスポートでOpenAI APIは呼びません。`;
+
+        if (!filteredItems.length) {
+          container.innerHTML = `<div class="empty">${selectedMode === "all" ? "保存済みAI結果はありません。" : `${escapeHtml(aiModeLabel(selectedMode))}の保存済み結果はありません。`}</div>`;
+          return;
+        }
+
+        const presentModes = Array.from(new Set(filteredItems.map((item) => String(item?.mode || "unknown"))));
+        const orderedModes = [
+          ...AI_HISTORY_MODE_ORDER.filter((mode) => presentModes.includes(mode)),
+          ...presentModes.filter((mode) => !AI_HISTORY_MODE_ORDER.includes(mode)),
+        ];
+        container.innerHTML = orderedModes.map((mode) => {
+          const modeItems = filteredItems.filter((item) => String(item?.mode || "unknown") === mode);
+          const label = String(modeItems[0]?.mode_label || aiModeLabel(mode));
+          return `
+            <section class="ai-history-group" aria-labelledby="ai-history-group-${escapeAttr(mode)}">
+              <h3 class="ai-history-group-heading" id="ai-history-group-${escapeAttr(mode)}">
+                ${escapeHtml(label)} <span class="chip">${modeItems.length}件</span>
+              </h3>
+              <div class="ai-history-list">${modeItems.map(renderStockAiHistoryItem).join("")}</div>
+            </section>
+          `;
+        }).join("");
+      };
+
+      const selectedStockAiHistoryItem = (historyId) => (
+        (state.stockAiHistory.data?.items || []).find((item) => item?.history_id === historyId) || null
+      );
+
+      const renderStockAiHistoryDetail = () => {
+        const shell = document.getElementById("stock-ai-history-detail");
+        const feedback = document.getElementById("stock-ai-history-detail-feedback");
+        const markdownLink = document.getElementById("stock-ai-history-markdown-link");
+        const detail = state.stockAiHistoryDetail;
+        if (!shell || !feedback || !markdownLink) return;
+        clearAiReviewReader("history");
+        markdownLink.hidden = true;
+        markdownLink.removeAttribute("href");
+        shell.hidden = detail.status === "idle";
+        setAiResultBusy("stock-ai-history-detail-results", detail.status === "loading");
+        if (detail.status === "idle") {
+          fill("stock-ai-history-detail-results", "");
+          feedback.textContent = "";
+          return;
+        }
+        if (detail.status === "loading") {
+          feedback.className = "search-feedback";
+          feedback.textContent = "保存済み結果を読み込み中...";
+          fill("stock-ai-history-detail-results", '<article class="ai-review-card">保存済み結果を読み込んでいます。</article>');
+          return;
+        }
+        if (detail.status === "failed" || !detail.data) {
+          feedback.className = "search-feedback error";
+          feedback.textContent = `保存済み結果を開けませんでした${detail.error ? `: ${detail.error}` : "。"}`;
+          fill("stock-ai-history-detail-results", '<article class="ai-review-card error">履歴APIから結果を取得できませんでした。</article>');
+          return;
+        }
+
+        const data = detail.data;
+        const historyId = safeStockAiHistoryId(detail.historyId);
+        const heading = document.getElementById("stock-ai-history-detail-heading");
+        if (heading) heading.textContent = `${aiModeLabel(data.mode)}・${formatDateTime(data.generated_at)}`;
+        if (historyId) {
+          markdownLink.href = `/api/ai/stock-review/history/${encodeURIComponent(historyId)}/export.md`;
+          markdownLink.hidden = false;
+        }
+
+        if (data.mode === "prompt_only") {
+          feedback.className = "search-feedback success";
+          feedback.textContent = "これはOpenAI回答ではなく、手動投入用に保存されたプロンプトです。Markdownとして保存できます。";
+          fill("stock-ai-history-detail-results", `
+            ${renderAiReviewSummary(data, detail.contextLabel || "")}
+            <article class="ai-review-card">
+              <h3 class="ai-card-title">ChatGPT投入用プロンプト</h3>
+              <pre class="ai-history-prompt">${escapeHtml(data.manual_prompt || "保存されたプロンプトはありません。")}</pre>
+            </article>
+          `);
+          return;
+        }
+
+        const status = data.status || "success";
+        if (status !== "success") {
+          feedback.className = "search-feedback error";
+          feedback.textContent = `${aiReviewResultStatusLabel(data)}として保存された結果です。生応答はプレーンテキストで表示します。`;
+          fill("stock-ai-history-detail-results", `
+            <article class="ai-review-card error">
+              <div class="meta">
+                <h3 class="ai-card-title">${escapeHtml(aiReviewResultStatusLabel(data))}</h3>
+                <span class="chip warn">${escapeHtml(aiHoldingsSourceLabel(data.holdings_source))}</span>
+              </div>
+              ${renderAiParagraph(data.error?.message || data.portfolio_summary?.overall_view || "分析できませんでした。")}
+              ${renderAiRawFallback(data.raw_model_output)}
+            </article>
+          `);
+          prepareAiReviewReader("history", detail);
+          return;
+        }
+
+        feedback.className = "search-feedback success";
+        feedback.textContent = "保存済み結果を表示しています。別タブ画面はブラウザの印刷からPDFへ保存できます。";
+        fill("stock-ai-history-detail-results", `
+          ${renderAiReviewSummary(data, detail.contextLabel || "")}
+          ${(data.stocks || []).map(renderAiStockCard).join("")}
+        `);
+        prepareAiReviewReader("history", detail);
+      };
+
+      const loadStockAiHistory = async () => {
+        const requestId = ++state.stockAiHistoryRequestId;
+        state.stockAiHistory = { status: "loading", data: state.stockAiHistory.data, error: null };
+        renderStockAiHistory();
+        try {
+          const payload = await fetchJson("/api/ai/stock-review/history");
+          if (requestId !== state.stockAiHistoryRequestId) return;
+          state.stockAiHistory = { status: "success", data: payload, error: null };
+        } catch (error) {
+          if (requestId !== state.stockAiHistoryRequestId) return;
+          state.stockAiHistory = {
+            status: "failed",
+            data: null,
+            error: error.message || String(error),
+          };
+        }
+        renderStockAiHistory();
+      };
+
+      const openStockAiHistoryDetail = async (rawHistoryId, openReader = false) => {
+        const historyId = safeStockAiHistoryId(rawHistoryId);
+        if (!historyId) return;
+        const listItem = selectedStockAiHistoryItem(historyId);
+        if (state.stockAiHistoryDetail.historyId === historyId && state.stockAiHistoryDetail.data) {
+          renderStockAiHistoryDetail();
+          document.getElementById("stock-ai-history-detail")?.scrollIntoView({ behavior: "smooth", block: "start" });
+        } else {
+          const requestId = ++state.stockAiHistoryDetailRequestId;
+          state.stockAiHistoryDetail = {
+            status: "loading",
+            data: null,
+            error: null,
+            historyId,
+            contextLabel: listItem?.target_label || aiHistoryTargetLabel(listItem?.target),
+            readerTitle: `${listItem?.mode_label || aiModeLabel(listItem?.mode)}・保存済みAI結果`,
+          };
+          renderStockAiHistoryDetail();
+          document.getElementById("stock-ai-history-detail")?.scrollIntoView({ behavior: "smooth", block: "start" });
+          try {
+            const payload = await fetchJson(`/api/ai/stock-review/history/${encodeURIComponent(historyId)}`);
+            if (requestId !== state.stockAiHistoryDetailRequestId) return;
+            const review = payload?.review;
+            if (!review || typeof review !== "object") throw new Error("保存済み結果の形式が不正です。");
+            state.stockAiHistoryDetail = {
+              status: "success",
+              data: review,
+              error: null,
+              historyId: payload.history_id || historyId,
+              contextLabel: listItem?.target_label || aiHistoryTargetLabel(listItem?.target),
+              readerTitle: `${aiModeLabel(review.mode)}・保存済みAI結果`,
+            };
+          } catch (error) {
+            if (requestId !== state.stockAiHistoryDetailRequestId) return;
+            state.stockAiHistoryDetail = {
+              status: "failed",
+              data: null,
+              error: error.message || String(error),
+              historyId,
+              contextLabel: null,
+              readerTitle: null,
+            };
+          }
+          renderStockAiHistoryDetail();
+        }
+
+        if (openReader && hasReadableAiReview(state.stockAiHistoryDetail)) {
+          const readerLink = document.getElementById("stock-ai-history-reader-link");
+          const feedback = document.getElementById("stock-ai-history-detail-feedback");
+          if (readerLink?.href && !readerLink.hidden) {
+            if (feedback) {
+              feedback.className = "search-feedback success";
+              feedback.textContent = "印刷用画面を準備しました。「別タブ表示・PDF保存（印刷）」を押し、ブラウザの印刷でPDFに保存してください。";
+            }
+            readerLink.focus({ preventScroll: true });
+          }
+        }
       };
 
       const setPortfolioAiButtonsDisabled = (disabled) => {
@@ -2439,7 +2919,7 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
             setPortfolioAiButtonsDisabled(false);
             renderPortfolioAiReview();
           }
-          await loadStockAiUsage();
+          await Promise.all([loadStockAiUsage(), loadStockAiHistory()]);
         }
       };
 
@@ -2615,7 +3095,7 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
         } finally {
           setWatchlistAiButtonsDisabled(false);
           renderWatchlistAiReview();
-          await loadStockAiUsage();
+          await Promise.all([loadStockAiUsage(), loadStockAiHistory()]);
         }
       };
 
@@ -3860,6 +4340,7 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
         const message = escapeHtml(error.message || String(error));
         clearAiReviewReader("portfolio");
         clearAiReviewReader("watchlist");
+        clearAiReviewReader("history");
         if (PAGE_MODE === "detail") {
           text("detail-page-title", "銘柄詳細");
           text("detail-page-subtitle", "読み込みに失敗しました。");
@@ -4514,10 +4995,12 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
         const form = document.getElementById("watchlist-search-form");
         const input = document.getElementById("watchlist-search-input");
         const managementSpaceSelect = document.getElementById("management-space-select");
+        const stockAiHistoryMode = document.getElementById("stock-ai-history-mode");
 
         managementSpaceSelect?.addEventListener("change", async () => {
           await selectManagementSpace(managementSpaceSelect.value);
         });
+        stockAiHistoryMode?.addEventListener("change", renderStockAiHistory);
 
         if (form && input) {
           form.addEventListener("submit", async (event) => {
@@ -4539,7 +5022,12 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
           });
         }
 
-        await Promise.all([loadDashboard(null), loadStockAiUsage(), loadSecurityMasterStatus()]);
+        await Promise.all([
+          loadDashboard(null),
+          loadStockAiUsage(),
+          loadStockAiHistory(),
+          loadSecurityMasterStatus(),
+        ]);
         renderSearchResults([], "");
       };
 
@@ -4553,6 +5041,26 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
       if (main) {
         main.addEventListener("click", async (event) => {
           if (event.target.closest("[data-source-link]")) {
+            return;
+          }
+
+          if (event.target.closest("[data-stock-ai-history-refresh]")) {
+            event.preventDefault();
+            await loadStockAiHistory();
+            return;
+          }
+
+          const stockAiHistoryDetailButton = event.target.closest("[data-stock-ai-history-detail]");
+          if (stockAiHistoryDetailButton) {
+            event.preventDefault();
+            await openStockAiHistoryDetail(stockAiHistoryDetailButton.dataset.stockAiHistoryDetail, false);
+            return;
+          }
+
+          const stockAiHistoryReaderButton = event.target.closest("[data-stock-ai-history-reader]");
+          if (stockAiHistoryReaderButton) {
+            event.preventDefault();
+            await openStockAiHistoryDetail(stockAiHistoryReaderButton.dataset.stockAiHistoryReader, true);
             return;
           }
 
@@ -4754,6 +5262,7 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
         if (!event.persisted) return;
         prepareAiReviewReader("portfolio", state.portfolioAiReview);
         prepareAiReviewReader("watchlist", state.watchlistAiReview);
+        prepareAiReviewReader("history", state.stockAiHistoryDetail);
       });
 
       const bootstrap = async () => {

@@ -1,6 +1,6 @@
 # API Spec Current
 
-> 現在の正本: `api_spec_v2.3.md`
+> 現在の正本: `api_spec_v2.4.md`
 
 ## 概要
 
@@ -9,9 +9,9 @@
 
 ## 現在値
 
-- API仕様書: v2.3
+- API仕様書: v2.4
 - 更新日: 2026-08-19
-- 変更概要: 複数named watchlistのcollection / membership API、default互換、`watchlist_id`付き検索・dashboard・legacy AI targetとclient scope整合性を追加
+- 変更概要: legacy stock-review保存履歴のfilterable metadata一覧、安全なdetail・Markdown export、保存失敗境界を追加
 
 ## 主な変更点
 
@@ -35,6 +35,11 @@
 - ordinary/preferred/alphanumeric code保持、source/listing date分離、pagination guard、bounded 429 retry
 - BYOK/private local/full dataset非同梱・非再配布、東証listed-issue scope、地方取引所単独銘柄非保証
 - legacy stock-reviewの`review_runs`とprovider `api_calls`を分離したusage API契約
+- `GET /api/ai/stock-review/history`の保存順の新しいものから返すmetadata、mode / target / status / limit / offset、filter前mode countsとfilter後total
+- `GET /api/ai/stock-review/history/{history_id}`の`{history_id, review}` envelopeと`request_payload`除外、旧identityのfile非変更read-time補完
+- `GET /api/ai/stock-review/history/{history_id}/export.md`のsemantic UTF-8 Markdown、安全なASCII attachment filename、no-store / nosniff / no-referrer
+- `save_result=true`の新規responseだけを最大100件保存し、cache hit非保存、保存失敗時の回答維持 / safe warning / cache非保存、不正root上書き拒否
+- legacy history GET / exportがOpenAI、quota、usage、cacheを変更せず、旧named watchlist名を推測復元しない境界
 - `concentration_comment` / `summary_view`のcanonical正規化、Pydantic model以内のmode別schema、主要objectの`additionalProperties=false`
 - scanner stock 30項目未満、`judgement` 7値enum、free-text judgementのcanonical code化
 - `parse_failure_kind=json_syntax|root_shape|schema_validation`と、`status=json_parse_failed` raw output救済の成功回数非加算・cache禁止・履歴保存可

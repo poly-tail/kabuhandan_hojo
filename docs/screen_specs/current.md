@@ -1,6 +1,6 @@
 # Screen Spec Current
 
-> 現在の正本: `screen_spec_v2.7.md`
+> 現在の正本: `screen_spec_v2.8.md`
 
 ## 概要
 
@@ -9,9 +9,9 @@
 
 ## 現在値
 
-- 画面仕様書: v2.7
+- 画面仕様書: v2.8
 - 更新日: 2026-08-19
-- 変更概要: Portfolioと複数named watchlistを単一管理spaceで切り替え、collection操作、scoped検索・monitoring・detail / chart・legacy AIを提供
+- 変更概要: legacy保存済みAI結果のmode別一覧・detail・Markdown保存・別タブ印刷 / PDF表示を追加
 
 ## 主な変更点
 
@@ -33,6 +33,10 @@
 - 取得、新規、更新、再有効化、無効化countのsuccess feedbackと、seed fallbackを全件成功表示しない境界
 - BYOK/private local/full dataset非同梱・非再配布、地方取引所単独銘柄を保証しない表示範囲
 - dashboard legacy AI usage panelと利用者向けholdings-source label
+- dashboardの`保存済みAI結果`で直近100件を保存順の新しいものからmode別に表示し、mode filter、loading / empty / error / invalid stateを区別すること
+- 保存履歴の`結果を見る`、`OpenAI API非呼び出し`と示すprompt-only表示、`Markdown保存`、`別タブ表示・PDF保存`を提供し、OpenAIを再呼び出さないこと
+- raw fallbackの画面previewを先頭20,000文字へ省略した場合は全文Markdownを案内し、印刷cloneでraw detailsをopenにすること
+- 保存失敗回答を履歴済みと誤表示せず、旧recordにないnamed watchlist名を現行stateから推測復元しないこと
 - legacy成功responseはMarkdown本文として解釈せず、既知JSON fieldを全体所見、risk、行動、候補、warning、stock detail、sourceへ意味別表示すること
 - 空section省略、同じlist内の重複除去、Portfolio / Watchlist共通helper、escaped textと文字label付き`【V】` / `【E】` / `【U】` badge
 - legacy Portfolio / Watchlistの`status=success`（`prompt_only`除外）または非空生応答を持つ`json_parse_failed`に、`回答を別タブ／ウィンドウで大きく表示`action linkを出すこと

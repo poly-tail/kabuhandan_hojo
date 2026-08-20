@@ -1,5 +1,25 @@
 # Source Call Graph
 
+## 2026-08-19 legacy保存済みAI結果
+
+### save
+
+1. browser -> `POST /api/ai/stock-review` with `save_result=true` -> `PortfolioAiReviewService.review()` -> new response生成
+2. cache hit -> 既存responseを返す -> history appendなし。`save_result=false` -> responseを返す -> history appendなし
+3. 保存対象response -> `_save_ai_review_result_with_warning()` -> process内`RLock` -> history root検証 -> last 100へappend -> temp write / flush / fsync / `os.replace`
+4. history root破損またはwrite失敗 -> 既存fileを上書きしない -> 生成回答を維持 -> safe warningを`warnings`へ追加 -> OpenAI再呼び出しなし
+
+### list・detail・export
+
+1. dashboard -> `GET /api/ai/stock-review/history?mode=...&limit=100&offset=0` -> valid entryをread -> 64hex SHA-256 IDと決定的metadata summaryを作成 -> filter前`mode_counts` -> filter後`total` -> pagination -> 保存順の新しいものからresponse
+2. 不正entry -> skipして`invalid_count`へ加算。過去のcode-only参照 -> local masterでread-time補完 -> history fileは変更しない
+3. `結果を見る` -> `GET /api/ai/stock-review/history/{id}` -> `{history_id, review}` -> `request_payload`除外 -> 共通safe renderer / prompt-only / raw error表示
+4. `Markdown保存` -> `GET /api/ai/stock-review/history/{id}/export.md` -> semantic Markdown -> escaped text / HTTP(S) link only / 可変長raw fence -> safe ASCII attachment header
+5. `別タブ表示・PDF保存` -> detail DOMをrestricted-CSP Blobへclone -> raw `details`をopen -> browser印刷でPDF保存。raw preview省略時は全文Markdownを案内
+6. list / detail / export / printは保存済みlocal dataのreadだけ -> OpenAI / quota / usage / cache / Web Storage mutationなし
+
+legacy recordは`watchlist_id`を持ち得るが実行時list名を保存していないため、history readで現行collection名を推測補完しない。canonical `AiAnalysisRecord`のreader / API flowは変更しない。
+
 ## 2026-08-19 Portfolio・複数named watchlist
 
 ### startupとdata
