@@ -1,5 +1,13 @@
 # Context
 
+## 2026-09-11 legacy AI信頼性・画面更新
+
+- 現行baselineは要件v2.2、API v2.5、画面v2.9、`SC-2026-09-11-01`である。対象解決／UI状態／検索実績をPhase A、metadata付き期限cacheをPhase B、条件／結果2ペインをPhase Cとして分離する。
+- 通常の空対象・未保有tickerに合成候補や仮の100株を補完しない。明示デモだけが合成dataを使い、providerへ送らない。
+- 現在回答の有効性とbusyを独立させ、条件・対象mutationでreader/prompt/copyと共に失効する。mutation成功後のrefresh失敗でも旧結果を有効にせず、同期成功まで再分析を禁止する。
+- provider検索実績を設定と分ける。cacheはsource metadata・prompt fingerprintを含む安定key、server記録から最大300秒未満・JST同日だけを使う。入力の由来不足は理由付きで無効化する。
+- canonical 1銘柄STANDARD/plain-text/active prompt v2026.08.18、保存履歴・Markdown・readerの安全表示、ローカル運用の境界は維持する。
+
 ## 2026-08-19 legacy保存済みAI結果 addendum
 
 - dashboard legacy stock-reviewの`save_result=true`で新規生成したresponseを、git管理外の`data/ai_review_history.json`へ最大100件保持し、保存順の新しいものからmode別に一覧表示する。`save_result=false`とcache hitは新しい履歴を作らない。
@@ -7,7 +15,7 @@
 - prompt / mock / live / raw fallbackの履歴保存失敗は生成成功と分離し、生成済み回答を返したまま固定warningを1回追加し、そのresponseをcacheへ保存しない。不正entryはread時にskip/countし、不正rootは上書きしない。通常appendは同一process `RLock`とatomic replaceを使い、multiprocess hard guaranteeは持たない。
 - dashboardはmode filter、分類一覧、detail、`.md`保存、別タブ印刷を提供する。PDFはbrowser印刷で保存し、server-side PDF生成は行わない。raw fallbackを先頭20,000文字へ省略した場合は全文Markdownを案内し、印刷cloneではraw `details`をopenにする。
 - 履歴read / export / printはOpenAI、usage、quota、cacheを変更しない。過去のcode-only銘柄参照はfile非変更でread時補完するが、旧recordにないnamed watchlist名は現行collectionから推測復元しない。
-- この追加はlegacy stock-review専用で、canonical個別銘柄AIの保存record一覧・exportを追加しない。現行baselineは要件v2.1、API v2.4、画面v2.8、変更単位`SC-2026-08-19-06`である。SC-2026-08-19-04の履歴非対象はlegacy保存履歴についてだけ本変更が置き換え、client-only現在回答readerの契約は維持する。
+- この追加はlegacy stock-review専用で、canonical個別銘柄AIの保存record一覧・exportを追加しない。この追加時点のbaselineは要件v2.1、API v2.4、画面v2.8、変更単位`SC-2026-08-19-06`である。SC-2026-08-19-04の履歴非対象はlegacy保存履歴についてだけ本変更が置き換え、client-only現在回答readerの契約は維持する。
 
 ## 2026-08-19 Portfolio・複数named watchlist addendum
 
@@ -15,7 +23,7 @@
 - `watchlist_collection`と`watchlist_membership`でdefault「メイン」を含む複数named listを管理する。同じtickerは複数listへ所属できる一方、既存`watchlist` rowのmemo / thesisはsecurity-level共有値でありlist固有ではない。
 - startup migrationはdefault不在時の最初のtransactionだけでdefaultを作成し、既存legacy itemをactive状態ごと一度だけbackfillする。再起動でnamed-only itemをdefaultへ混入させない。legacy `GET` / `POST /watchlist`はdefault互換である。
 - collection CRUDとlist別item APIを追加し、検索とdashboard dataはoptional `watchlist_id`へscopeする。named listからdetail / chartへ遷移するquery、戻りlink、detailの追加 / 仮説保存も同じIDを維持する。Portfolio contextはlegacy default endpointを使う。
-- named list選択中のlegacy AIは`target=watchlist`と`watchlist_id`を送る。明示named listが空、missing、inactiveでもmock holdingsへfallbackせず`no_holdings`となる。IDなしのlegacy default fallbackとPortfolio targetは維持する。
+- named list選択中のlegacy AIは`target=watchlist`と`watchlist_id`を送る。明示named listが空、missing、inactiveでもmock holdingsへfallbackせず`no_holdings`となる。IDなしdefaultの空対象も2026-09-11以降はmockへ補完しない。Portfolio targetは維持する。
 - checkbox選択はcollection別に分離し、1件以上なら既存`selected` target、全解除かつmanual tickerなしなら`watchlist`へ自動変更する。request開始時list名はsummary / reader title用のclient snapshotで、API / DBへ保存しない。
 - selector / collection / active membership / checkbox mutationは旧AI結果と進行中responseを無効化する。dashboardもrequested scopeとactive scopeを照合し、Portfolio復帰時はdefault monitoring scopeをreloadする。これらは追加OpenAI callを行わないclient consistency境界である。
 - collectionは認証・利用者分離のないapp-global dataである。既定loopbackとtrusted local利用を前提とし、Internetへ直接公開しない。認証、ownership、rate limit、list固有memo / thesis、Portfolio同期は今回追加しない。

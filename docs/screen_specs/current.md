@@ -1,6 +1,6 @@
 # Screen Spec Current
 
-> 現在の正本: `screen_spec_v2.8.md`
+> 現在の正本: `screen_spec_v2.9.md`
 
 ## 概要
 
@@ -9,11 +9,17 @@
 
 ## 現在値
 
-- 画面仕様書: v2.8
-- 更新日: 2026-08-19
-- 変更概要: legacy保存済みAI結果のmode別一覧・detail・Markdown保存・別タブ印刷 / PDF表示を追加
+- 画面仕様書: v2.9
+- 更新日: 2026-09-11
+- 変更概要: SC-2026-09-11-01 — live/mock分離、入力変更時失効、検索実績、系列別metadataと期限付きcache、Dashboard AIの2ペイン
 
 ## 主な変更点
+
+- 通常対象へ仮の保有・候補を補完せず、空対象はprovider・quota・usageを増やさないこと
+- 条件・保存成功時の回答失効とbusyを分離し、旧応答・旧finally・再取得失敗から旧結果を復活させないこと
+- Web設定とprovider実績の0回／実行／不明を分け、cache・履歴でも同じ意味を使うこと
+- 元データ系列別のsource/as_of/versionとprompt fingerprintをidentityへ接続し、最大300秒かつJST同日だけ自動再利用すること
+- Dashboard AIを条件／結果2ペインとし、利用量・保存・cache・promptは詳細設定へ整理すること
 
 - UI 5画面構成と独立URL `GET /ui/analysis`
 - Portfolioを既定表示とする全幅「保有・ウォッチリスト管理」spaceと、`portfolio` / `watchlist:<id>` native selector

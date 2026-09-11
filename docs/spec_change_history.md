@@ -13,11 +13,70 @@
 
 | 種別 | 現在版 | 正本 | 適用日 |
 |---|---:|---|---|
-| 要件仕様 | v2.1 | `docs/requirements/requirements_v2.1.md` | 2026-08-19 |
-| API仕様 | v2.4 | `docs/specs/api_spec_v2.4.md` | 2026-08-19 |
-| 画面仕様 | v2.8 | `docs/screen_specs/screen_spec_v2.8.md` | 2026-08-19 |
+| 要件仕様 | v2.2 | `docs/requirements/requirements_v2.2.md` | 2026-09-11 |
+| API仕様 | v2.5 | `docs/specs/api_spec_v2.5.md` | 2026-09-11 |
+| 画面仕様 | v2.9 | `docs/screen_specs/screen_spec_v2.9.md` | 2026-09-11 |
 
-要件v2.1、API仕様v2.4、画面仕様v2.8はそれぞれ直前版を累積継承し、legacy stock-reviewの保存履歴一覧・詳細・Markdown export・browser印刷によるPDF保存を扱う変更単位`SC-2026-08-19-06`を追加します。複数named watchlistの`SC-2026-08-19-05`、画面仕様v2.6のclient-only現在回答reader、canonical個別銘柄AIの既存契約も維持します。
+現在は要件v2.2、API仕様v2.5、画面仕様v2.9で、直前の保存履歴baselineを累積継承し、変更単位`SC-2026-09-11-01`を追加します。複数named watchlistの`SC-2026-08-19-05`、画面仕様v2.6のclient-only現在回答reader、canonical個別銘柄AIの既存契約も維持します。
+
+## 2.0. SC-2026-09-11-01 — legacy AIの入力・実績・期限と2ペイン
+
+### 変更理由
+
+空候補やtickerだけの選択へ合成位置を補完する経路、入力変更後の旧応答受理、検索許可を実行済みとする表示、毎回変わる生成時刻によるcache missが存在しました。UI改善に先立ち、対象解決／UI状態／検索実績をPhase Aの独立変更、cacheをPhase B、装飾をPhase Cとして修正します。
+
+### 対象・状態・検索実績
+
+- 通常の保有・監視・候補・選択経路では仮の数量、取得単価、候補理由、監視条件を補完しない。非空の明示holdingsを優先し、数量0と取得単価nullも実入力として保持する。
+- live候補は明示`candidates`だけから解決する。空なら`status=no_holdings`と「狙い中銘柄が未登録／指定されていません。」を返し、provider、quota、usage、履歴・cache保存を増やさない。候補DBを新設せず、named watchlistを狙い中へ読み替えない。
+- tickerだけのselectedは同期済みmasterの名称と実DB保有を使い、未保有なら数量0・取得単価nullとする。未知名称は`名称未登録（コード）`であり、仮の100株等へ変換しない。master aliasを解決してから実保有を照合する。
+- 空Portfolio、defaultを含む空Watchlistは別銘柄へ置換しない。`APP_USE_MOCK`はdata providerの起動設定、`target=mock`は明示デモ対象、`use_mock_holdings`は合成対象の明示、`mock_response`はAPIなし回答指定として区別する。合成対象は由来を保持しOpenAIへ送らない。実入力を一律mock回答へ変更しない。
+- mock dashboardのcheckbox選択は既存`use_mock_holdings=true`で合成由来を送る。手入力tickerだけの非保有条件には数量0・取得単価nullを使う。
+
+- 結果を決める条件はmode、target、ticker、仮説、建玉意図、Web ON/OFF・最大回数、mock設定、管理space・対象list・選択銘柄である。結果保存とcache利用は運用設定であり、toggleだけでは有効回答を消さない。
+- 条件変更はinput/changeの重複を冪等に扱い、現在回答、現在回答reader、生成prompt、copy可否を同時に失効させる。保存済み履歴は削除しない。
+- 保有追加・数量・取得単価変更・全削除を含む削除、対象list構成の変更は保存成功時に失効させる。保存失敗だけでは無関係の有効回答を消さない。
+- 保存成功後のDashboard再取得が失敗しても旧回答を復活させない。データ未同期を表示し、再同期成功まで古いstateでの再分析を禁止する。変更前に開始したDashboard取得も新しいrevisionへ適用しない。
+- 表示generationと実行中requestのbusy状態を分ける。条件変更後も旧通信が終わるまでは重複実行を禁止し、完了後に再実行を許す。旧成功・旧失敗・旧finallyが新しい表示を上書きしない。自動再実行、provider処理や課金まで停止したという表示は行わない。
+- 送信時の対象、list名、主要条件をclient memoryのsnapshotへ固定して結果・readerへ表示する。現在のcontrol値から旧回答の意味を再推測しない。
+
+- requestの`include_web_search`は検索設定である。responseの`web_search_requested`はmode既定値を含む要求設定、responseの`include_web_search`はserver設定・実効上限を解決した利用可否を表す。実効最大回数0、server OFF、強制mock対象、prompt-onlyでは実効利用可否をOFFにする。明示`mock_response=true`は許可設定がONのままでもAPIを呼ばず、実績はnot_runである。
+- `web_search_used`は検索許可ではなくprovider実績であり、`web_search_status=executed`のときだけtrueとする。既知0回は`not_run`、回数情報不足は`unknown`、観測された1回以上は`executed`として区別する。正の観測回数でも総数不明なら「以上（総数未確認）」と表示する。
+- `actual_usage.web_search_calls_known`は回数情報の有無を補足する互換なoptional fieldである。旧adapterが明示した回数は引き続き受理するが、metadataのない暗黙default 0を検索済みとしない。modelのsourcesや検索したという自己申告は実績の根拠にしない。
+- 設定ON・実行0回は「Web検索は未実行（最新のWeb裏取りなし）」、不明は「Web検索実績は未確認」と表示する。tool実行だけで主張全体の根拠labelを【V】へ昇格しない。
+- success、parse失敗・raw fallback、mock、prompt-only、現在回答・保存履歴reader、Markdown exportで同じ意味を使う。mockとprompt-onlyは既知0回である。旧履歴で実績を確認できない場合はread時だけunknownへ正規化し、recordを一括書換・削除しない。
+- cache hitは前回生成時の検索実績・usage・生成日時を保持し、今回の新規OpenAI・Web検索・追加usageは0と分けて表示する。閲覧でusageや概算を二重加算しない。
+
+### cache・metadata・互換性
+
+- cache identityは副作用のない専用関数でcanonical JSONへserializeしてhash化する。mapping keyを安定化し、配列の順序は保持する。Prompt Builderが付ける最上位`generated_at`だけを処理時刻として除外し、元データ基準日時・versionは除外しない。
+- 対象、数量、取得単価、実候補、watchlist ID、仮説、建玉意図、risk、mode、model、reasoning、実効Web設定、由来、元データ値・基準日時と、実際のsystem prompt・入力前instruction・output schemaのfingerprintをidentityへ含める。未接続の`analysis_mode`／`verbosity`を新機能として有効化しない。将来それらが結果を変える契約へ接続される場合はkeyにも含める。
+- `PortfolioMarketSnapshot.source_metadata`は系列名から`PortfolioSnapshotSource`配列へのoptional mapping（既定空）である。各recordはoptional `source`、`as_of`、`version`を持ち、欠損はnullであり現在時刻を捏造しない。価格、テクニカル、需給、ニュース、イベントの時点を生成日時へまとめない。
+- 現在入力に使う価格の末尾最大25recordは`target_date`／`source_name`／`updated_at`、technicalは`target_date`／`local:technical_feature_daily`／`updated_at`、flowは`target_date`／`source_name`／`updated_at`、newsは`event_time`／`source_name`／`updated_at`を接続する。新しいprovider取得や全adapter改修は行わない。
+- 入力に存在する系列だけに由来・有効な基準日時を要求する。存在しないoptional系列は再利用を妨げない。使用する系列のmetadata不足、不正日付、市場data全体未取得では自動cacheを無効にし、対象code・系列・理由をwarning表示する。ニュースは入力件数分のmetadataが必要である。現在取得経路が接続されていないイベント等に値だけがある場合も、その系列のmetadataが揃うまで自動再利用を抑止する。
+- formatは`legacy-review-v2`でserverの`recorded_at`を保存する。`OPENAI_REVIEW_CACHE_TTL_SECONDS`は既定300、範囲0〜300秒で、0は無効化する。ageがTTL未満かつ同一JST日だけhitし、ちょうどTTL到達時、日付跨ぎ、未来・timezoneなし・不正時刻、旧形式・破損は安全なmissとする。readで期限を延長しない。
+- TTL内でも元データ値・基準日・version、意味入力、prompt/schema fingerprint変更はmissである。`use_cache=false`は再生成経路を使う。serverが記録する回答完了時刻を`generated_at`とし、modelの日時をcache期限の根拠にしない。
+- 正常live結果だけを、既存の履歴保存成功に付随する条件でcacheへ保存する。mock、prompt-only、parse失敗、raw fallbackは通常成功cacheへ混ぜない。保存失敗でも生成結果を返し、cache保存や追加provider callを行わない。cache hitはprovider・新規quota・usage・履歴・cache writeを増やさない。
+- 300秒は暫定の工学的な自動再利用上限であり、市場データの最新性、未観測ニュースの不存在、投資判断の安全性を保証しない。metadata不足で自動再利用できない回答も保存履歴から明示閲覧できる。価格等の既存基準日を接続できる固定入力ではreview経路2回目のhitをstubで検証する。
+
+既存URLと必須request fieldは維持し、source metadataと検索実績は互換なfield追加です。旧cacheは安全なmissとなり、旧履歴は削除しません。過去の暗黙mock補完だけを意図して変更し、実入力や実DB対象を一律mockへ切り替えません。
+
+### 表示と検証
+
+- `/ui/dashboard`の「保有・ウォッチリストAIレビュー」を`.stock-ai-workbench`内の`.stock-ai-control-pane`と`.stock-ai-result-pane`へ配置する。各classは1件、主要IDは一意で全操作はmain内に置く。
+- 1440px前後は左380〜420px・右残り幅、960px以下は1カラムとする。390pxではdocument横overflowを生じさせず、長い日本語・URL・pre・フォームは折返しと`min-width: 0`で収める。
+- 薄いニュートラルグレー背景、白panel、濃紺文字、薄い枠、弱いshadow、青い主操作とする。緑・赤・橙は成功・損益・警告等の意味に限定する。新CSSは`.page-top`のテーマ以外、可能な限り`.page-top .stock-ai-workbench`以下にscopeする。
+- 4分析方法、分析対象、建玉意図、ユーザー仮説、Web ON/OFF、実行操作を常時表示する。4実行buttonと`stock-ai-mode` selectの重複、既存button文言・ID・data属性を維持する。
+- `#stock-ai-details`へlegacy利用量、Web最大回数、mock、保存、cache、ChatGPT投入用prompt生成・copy・prompt欄をまとめる。空promptは大きな空白を占有せず、生成後はdetailsを開いて確認・copyへ案内する。
+- 右paneは現在状態、送信時条件snapshot、回答生成日時、系列別の元データ基準日時、reader導線、結果を示す。入力なしの系列と、入力あり・基準日時未取得の系列を区別する。基準日時は範囲・source・件数を常時示し、各record・versionは詳細へ展開できる。readerの印刷時はsource詳細を開いて保持する。
+- keyboardから4分析方法、主要条件、詳細設定、実行、readerへ到達でき、focusを視認できる。empty/loading/success/failure/長文/prompt生成済みの各状態を1440・960・390pxで確認する。
+- safe renderer、escapeHtml、安全なURL、reader CSP、`noopener noreferrer`、raw failureの非成功表示を維持する。外部font、icon library、CSS/JS framework、効く保証のない期間・思考深度・verbosity controlは追加しない。
+
+Nodeの実イベント系列と固定一時DBのprovider stubで回帰を検査します。Windowsのsandbox一時directory権限とGit改行変換によるimmutable asset hash不一致は検証環境として区別し、canonical assetsの内容を変更して通しません。対象由来の修正では既存assertを削除せず、空対象・実入力・明示mockの回帰を追加しました。画面品質は実ブラウザの独立した完了条件とし、Node検証を画面確認とは呼びません。
+
+### 非対象と既知制約
+
+analysis_mode／verbosityの意味・実接続、主判断期間・想定保有期間・思考深度、provider Web検索上限の独立した強制保証、全面sidebar化、HTML/CSS/JS一括分割、Internet公開hardeningは別課題とする。この変更で自動売買・発注・新規scraping・canonical個別銘柄AI統合を行わない。canonicalの登録済み1銘柄、STANDARD、plain-text、no-store、store=false、保存失敗分離とactive prompt v2026.08.18を維持する。
 
 ## 2.1. SC-2026-08-19-06 — legacy保存済みAI結果・Markdown / PDF印刷表示
 
@@ -699,7 +758,7 @@ model選択と回答品質presetは別の設定軸です。`STANDARD`はmodel名
 | 2026-08-17 | v1.3 | v1.6 | v1.8 | SC-2026-08-17-02: canonical AI回答保存・大型表示・prompt v2026.08.17 |
 | 2026-08-17 | v1.2 | v1.5 | v1.7 | SC-2026-08-17-01: canonical個別銘柄AI最小縦スライスと定型prompt最小統合 |
 
-直前baselineの完全な内容は各versioned fileに残します。新baselineは要件v2.1、API v2.4、画面v2.8で、legacy保存履歴の最大100件、metadata一覧、detail、Markdown export、browser印刷 / PDF表示を追加するSC-2026-08-19-06です。認証・利用者分離、履歴削除・全文検索・共有、server-side PDF生成、過去のnamed list名復元は追加しません。
+直前baselineの完全な内容は各versioned fileに残します。以下はSC-2026-08-19-06適用時のbaselineです。要件v2.1、API v2.4、画面v2.8で、legacy保存履歴の最大100件、metadata一覧、detail、Markdown export、browser印刷 / PDF表示を追加するSC-2026-08-19-06です。認証・利用者分離、履歴削除・全文検索・共有、server-side PDF生成、過去のnamed list名復元は追加しません。
 
 ## 11. 更新ルール
 

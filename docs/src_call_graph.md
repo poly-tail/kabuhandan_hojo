@@ -1,5 +1,13 @@
 # Source Call Graph
 
+## 2026-09-11 legacy AIの信頼性経路（prose補足）
+
+1. Dashboardは送信条件を固定し、表示generationとbusyを分ける。条件変更・対象保存成功は現在回答を失効させ、保存成功後の取得失敗はdata未同期として再分析を止める。
+2. `PortfolioAiReviewService.review()`は明示入力／実DB／明示デモを区別して対象解決する。通常の空対象はno-targetで終了し、合成対象は実OpenAIへ進めない。
+3. `get_market_snapshot()`は実際に使うrecordのsource/as_of/versionを系列別へ接続する。`portfolio_ai_cache`の`build_cache_key()`、`prompt_fingerprint()`、`cache_ineligibility()`、`cache_entry_is_current()`で同一性と再利用条件を判定する。
+4. 有効cacheは元回答を返すだけでprovider・quota・usage・保存writeへ進まない。missでは既存provider経路を使い、tool-call実績から検索statusを設定する。正常live結果の履歴保存成功に付随してcacheを書き、保存失敗と生成失敗を分ける。
+5. Dashboard・現在回答reader・保存履歴・Markdownは検索実績と元データ基準日時を安全に表示する。canonical個別銘柄AI経路とMermaid正本は変更しない。
+
 ## 2026-08-19 legacy保存済みAI結果
 
 ### save
@@ -51,7 +59,7 @@ legacy recordは`watchlist_id`を持ち得るが実行時list名を保存して�
 2. checkbox 1件以上 -> 既存`target=selected` + selected holdings。全解除かつmanual tickerなし -> `target=watchlist`
 3. AI開始 -> active list名をcontext snapshot -> loading / summary / Blob reader title。API / DB / Web Storageへ保存しない
 4. service -> 指定collectionのactive membershipだけをtarget化 -> non-emptyなら既存prompt / provider / parse / quota flow
-5. 明示named listがempty / missing / inactive -> `no_holdings` -> mock holdingsへfallbackしない。IDなしlegacy default emptyだけ既存fallbackを維持
+5. 明示named listがempty / missing / inactive -> `no_holdings` -> mock holdingsへfallbackしない。2026-09-11以降はIDなしdefault emptyもno-target（暗黙mockなし）
 6. selector / collection / active membership / checkbox mutation -> client request generation更新 -> 現在結果と進行中旧responseを無効化。追加OpenAI callなし
 7. response -> 共通structured renderer / v2.6 Blob reader。selector切替自体はAPI / OpenAI再呼び出し、quota、usage mutationを行わない
 

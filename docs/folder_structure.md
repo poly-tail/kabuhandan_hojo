@@ -1,5 +1,14 @@
 # Folder Structure
 
+## 2026-09-11 追加・更新する配置
+
+- `app/services/portfolio_ai_cache.py`: legacy AI cacheの純粋なidentity / metadata / TTL判定。
+- `tests/unit/test_review_target_provenance.py`、`test_review_search_evidence.py`、`test_review_cache_identity.py`: provider stub・一時保存先・一時DBを使う信頼性回帰。`test_stock_ai_workbench.py`はpane・ID・canonical HTMLの維持を検査する。
+- `tests/js/stock_ai_state.test.cjs`、`stock_ai_snapshot.test.cjs`: 追加npm依存なしのNodeイベント系列・送信snapshot表示テスト。
+- `scripts/check_stock_ai_browser.py`: optional Playwrightによる合成API画面QA。screenshotsや検証結果はGit管理しない一時出力先に保存する。
+- `docs/requirements/requirements_v2.2.md`、`docs/specs/api_spec_v2.5.md`、`docs/screen_specs/screen_spec_v2.9.md`: `SC-2026-09-11-01`の累積正本。旧版は履歴として変更しない。
+- `README.md`、`scripts/README.md`、`tests/README.md`とCIが検証コマンドを共有する。production dependencyへブラウザQA依存を追加しない。
+
 ## 2026-08-19 legacy保存済みAI結果 addendum
 
 - `app/schemas/portfolio_ai.py`: legacy保存履歴のmetadata item、list集計 / pagination、detail envelope schema。
