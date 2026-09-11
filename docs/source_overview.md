@@ -1,5 +1,15 @@
 # Source Overview
 
+## 2026-09-11 legacy AI信頼性・2ペイン
+
+- `app/services/portfolio_ai_review.py`: live対象と明示mockの由来分離、provider検索実績、既存recordから系列別source/as_of/versionを接続、履歴保存成功に付随するcache連携を担当する。
+- `app/services/portfolio_ai_cache.py`: canonical key、実prompt/schema fingerprint、使用系列だけのmetadata適格性、server記録時刻・TTL・JST同日の純粋な判定を担当する。provider・DB・file writeを行わない。
+- `app/schemas/portfolio_ai.py` / `app/core/config.py`: optional `PortfolioSnapshotSource` / `source_metadata`、検索実績の互換field、最大300秒までのcache TTL設定を持つ。
+- `app/api/routes/ui.py`: 条件／結果2ペイン、generationとbusy分離、mutation後の同期guard、送信条件snapshot、生成日時と系列別基準日時、検索実績のsafe表示を担当する。canonical `analysis_ui.py`へ統合しない。
+- `tests/unit/test_review_target_provenance.py` / `test_review_search_evidence.py` / `test_review_cache_identity.py`: stub・一時DBによる由来、検索、cache回帰。`test_stock_ai_workbench.py`は構造・ID・canonical HTML維持を検査する。`tests/js/stock_ai_state.test.cjs` / `stock_ai_snapshot.test.cjs`: Nodeで実イベント系列とsnapshot表示を検証する。
+- `scripts/check_stock_ai_browser.py`: optional Playwrightで全HTTPを合成responseへ差し替え、1440・960・390px、状態・reader・keyboardを検証する。実DB・providerは使わない。
+- 現行正本は要件v2.2、API v2.5、画面v2.9（`SC-2026-09-11-01`）である。構成変更はこのcache専用moduleと検証入口に限定し、Mermaidの構造は変更しない。
+
 ## 2026-08-19 legacy保存済みAI結果 addendum
 
 - `app/schemas/portfolio_ai.py`はmetadata-only `PortfolioAiReviewHistoryItem`、filter / pagination集計を持つ`PortfolioAiReviewHistoryListResponse`、`{history_id, review}`の`PortfolioAiReviewHistoryDetail`を定義する。
@@ -62,7 +72,7 @@
 
 ## 2026-08-19 specification baseline addendum
 
-- `docs/requirements/requirements_v1.9.md`、`docs/specs/api_spec_v2.2.md`、`docs/screen_specs/screen_spec_v2.4.md`は`SC-2026-08-19-02`時点の正本として履歴保持します。現在の正本は先頭の複数named watchlist addendumと各`current.md`を参照します。
+- `docs/requirements/requirements_v1.9.md`、`docs/specs/api_spec_v2.2.md`、`docs/screen_specs/screen_spec_v2.4.md`は`SC-2026-08-19-02`時点の正本として履歴保持します。現在の正本は先頭の最新addendumと各`current.md`を参照します。
 - `SC-2026-08-19-02`がlegacy stock-reviewのlocal master identity、dedupe/holdings優先、名称・code併記、live/mock/cache/UI表示を追跡します。`SC-2026-08-19-01`以前と旧versioned文書は履歴として保持します。
 
 ## 2026-08-17 specification baseline addendum

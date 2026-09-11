@@ -980,6 +980,89 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
         .management-space-controls, .management-space-controls .section-actions { width: 100%; }
         .management-space-select-label { width: 100%; min-width: 0; }
       }
+
+      /* Dashboard theme and AI workbench; detail and chart keep their theme. */
+      .page-top {
+        --bg: #f4f6f9;
+        --panel: #ffffff;
+        --panel-strong: #ffffff;
+        --ink: #17263d;
+        --muted: #536277;
+        --line: #dce3eb;
+        --accent: #245dc5;
+        --accent-soft: #edf3ff;
+        --shadow: 0 3px 14px rgba(23, 38, 61, 0.06);
+        --radius: 14px;
+        background: var(--bg);
+      }
+
+      .page-top::before, .page-top .hero-card::after { display: none; }
+      .page-top .panel { backdrop-filter: none; }
+
+      .page-top .stock-ai-workbench {
+        display: grid;
+        grid-template-columns: 400px minmax(0, 1fr);
+        gap: 20px;
+        align-items: start;
+        min-width: 0;
+        margin: 14px 0;
+      }
+
+      .page-top .stock-ai-workbench :is(.stock-ai-control-pane, .stock-ai-result-pane) {
+        display: grid;
+        gap: 18px;
+        min-width: 0;
+        padding: 20px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: #ffffff;
+        box-shadow: var(--shadow);
+        overflow-wrap: anywhere;
+      }
+
+      .page-top .stock-ai-workbench :is(h3, h4, p) { margin: 0; }
+      .page-top .stock-ai-workbench h3 { font-size: 18px; line-height: 1.5; }
+      .page-top .stock-ai-workbench .stock-ai-field { display: grid; gap: 7px; min-width: 0; }
+      .page-top .stock-ai-workbench .stock-ai-field > span { font-size: 13px; font-weight: 700; }
+      .page-top .stock-ai-workbench :is(.ai-review-control-grid, .stock-ai-usage-grid) { grid-template-columns: minmax(0, 1fr); }
+      .page-top .stock-ai-workbench .ai-review-control-grid { gap: 16px; }
+      .page-top .stock-ai-workbench :is(.input, .textarea) { width: 100%; min-width: 0; max-width: 100%; border-radius: 7px; }
+      .page-top .stock-ai-workbench :is(.ai-review-actions, .stock-ai-mode-actions) { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+      .page-top .stock-ai-workbench :is(button, .action-link, .chip, pre) { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
+      .page-top .stock-ai-workbench :is(button, .action-link) { border-radius: 7px; white-space: normal; line-height: 1.5; }
+      .page-top .stock-ai-workbench .primary-button { background: #245dc5; border-color: #245dc5; color: #ffffff; }
+      .page-top .stock-ai-workbench .primary-button:hover { background: #194ba6; }
+      .page-top .stock-ai-workbench :is(button, a, input, select, textarea, summary):focus-visible { outline: 3px solid #245dc5; outline-offset: 3px; }
+      .page-top .stock-ai-workbench .checkbox-row { display: grid; gap: 12px; }
+      .page-top .stock-ai-workbench .checkbox-row label { align-items: start; line-height: 1.6; }
+      .page-top .stock-ai-workbench .checkbox-row input { flex: 0 0 auto; margin-top: 4px; }
+      .page-top .stock-ai-workbench .score-chip { width: fit-content; font-size: 12px; border-radius: 6px; }
+      .page-top .stock-ai-workbench .stock-ai-details { border-top: 1px solid var(--line); padding-top: 16px; min-width: 0; }
+      .page-top .stock-ai-workbench .stock-ai-details > summary { cursor: pointer; font-size: 14px; font-weight: 700; line-height: 1.6; }
+      .page-top .stock-ai-workbench .stock-ai-details-content { display: grid; gap: 18px; min-width: 0; padding-top: 18px; }
+      .page-top .stock-ai-workbench .stock-ai-usage-panel { background: #f5f7fa; border-radius: 8px; min-width: 0; }
+      .page-top .stock-ai-workbench .stock-ai-details .ai-review-actions { grid-template-columns: minmax(0, 1fr); }
+      .page-top .stock-ai-workbench .prompt-output { min-height: 150px; }
+      .page-top .stock-ai-workbench .prompt-output[hidden] { display: none; }
+      .page-top .stock-ai-workbench .stock-ai-result-pane { min-height: 260px; }
+      .page-top .stock-ai-workbench .search-feedback { padding: 10px 12px; border: 1px solid var(--line); border-radius: 7px; background: #f5f7fa; line-height: 1.6; }
+      .page-top .stock-ai-workbench :is(.ai-review-grid, .ai-review-reader-link) { margin-top: 0; }
+      .page-top .stock-ai-workbench :is(.ai-review-card, .ai-result-section) { border-radius: 8px; padding: 14px; }
+      .page-top .stock-ai-workbench .ai-review-summary { background: #ffffff; border-color: var(--line); }
+      .page-top .stock-ai-workbench :is(.ai-copy, .ai-summary-lead, .ai-raw-content) { color: var(--ink); }
+      .page-top .stock-ai-workbench .chip:not(.warn):not(.info) { background: #f3f6fa; color: var(--muted); }
+      .page-top .stock-ai-workbench .source-link { border-color: var(--line); background: #edf3ff; color: #245dc5; }
+      .page-top .stock-ai-workbench .source-link-plain { background: #f3f6fa; color: var(--muted); }
+      .page-top .stock-ai-workbench .ai-source-details > summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+
+      @media (max-width: 960px) {
+        .page-top .stock-ai-workbench { grid-template-columns: minmax(0, 1fr); }
+      }
+
+      @media (max-width: 640px) {
+        .page-top .stock-ai-workbench :is(.stock-ai-control-pane, .stock-ai-result-pane) { padding: 14px; }
+      }
+      /* End dashboard AI workbench. */
     </style>
   </head>
   <body class="page-__PAGE_MODE__">
@@ -1087,82 +1170,111 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
               <div class="subtle" id="portfolio-note">broker 連携は使わず、手入力で保有銘柄を管理します。</div>
               <div class="search-feedback" id="portfolio-feedback"></div>
             </div>
-            <div class="ai-review-tools">
-              <div class="section-head" style="margin-bottom: 0;">
-                <div>
-                  <div class="eyebrow">AI分析</div>
-                  <h3>保有・ウォッチリストAIレビュー</h3>
+            <div class="stock-ai-workbench">
+              <section class="stock-ai-control-pane" aria-labelledby="stock-ai-control-heading">
+                <h3 id="stock-ai-control-heading">保有・ウォッチリストAIレビュー</h3>
+                <p class="subtle">分析条件を確認し、実行する分析方法を選んでください。</p>
+                <div class="ai-review-control-grid">
+                  <label class="stock-ai-field" for="stock-ai-mode">
+                    <span>分析方法</span>
+                    <select class="input" id="stock-ai-mode" aria-label="AI分析モード">
+                      <option value="scanner">軽量スキャン</option>
+                      <option value="analyst">個別詳細分析</option>
+                      <option value="judge" selected>全体売買判断</option>
+                      <option value="critical">重要局面分析</option>
+                    </select>
+                  </label>
+                  <label class="stock-ai-field" for="stock-ai-target">
+                    <span>分析対象</span>
+                    <select class="input" id="stock-ai-target" aria-label="AI分析対象">
+                      <option value="holdings">保有銘柄</option>
+                      <option value="candidates">狙い中銘柄</option>
+                      <option value="watchlist">監視銘柄</option>
+                      <option value="selected">選択銘柄</option>
+                      <option value="mock">テスト用仮保有銘柄</option>
+                    </select>
+                  </label>
+                  <label class="stock-ai-field" for="stock-ai-tickers">
+                    <span>選択銘柄コード</span>
+                    <input class="input" id="stock-ai-tickers" placeholder="選択銘柄: 7203,7974" aria-label="選択銘柄コード" />
+                  </label>
+                  <label class="stock-ai-field" for="stock-ai-position-intent">
+                    <span>建玉意図</span>
+                    <select class="input" id="stock-ai-position-intent" aria-label="建玉意図">
+                      <option value="">建玉意図: 未入力</option>
+                      <option value="short">短期玉</option>
+                      <option value="mid">中期玉</option>
+                      <option value="long">長期玉</option>
+                      <option value="short_and_mid">短期＋中期</option>
+                      <option value="core">コア玉</option>
+                      <option value="add">追加玉</option>
+                    </select>
+                  </label>
+                  <label class="stock-ai-field" for="stock-ai-user-hypothesis">
+                    <span>ユーザー仮説</span>
+                    <input class="input" id="stock-ai-user-hypothesis" placeholder="仮説: 防衛テーマと決算期待、短期過熱など" aria-label="ユーザー仮説" />
+                  </label>
+                </div>
+                <div class="checkbox-row">
+                  <label><input id="portfolio-ai-web-search" type="checkbox" /> Web検索ON</label>
                 </div>
                 <div class="score-chip" id="stock-ai-cost">--</div>
-              </div>
-              <div class="stock-ai-usage-panel" id="stock-ai-usage" aria-live="polite">
-                <div class="stock-ai-usage-grid">
-                  <div>
-                    <div class="eyebrow">アプリ内利用量（legacy stock-review）</div>
-                    <div class="stock-ai-usage-value" id="stock-ai-usage-today">本日 成功レビュー -- / --回・残り --・OpenAI呼出 --回・概算 $--</div>
-                  </div>
-                  <div>
-                    <div class="eyebrow">月間利用量</div>
-                    <div class="stock-ai-usage-value" id="stock-ai-usage-month">今月 成功レビュー --回・OpenAI呼出 --回・概算 $--</div>
-                  </div>
+                <div class="ai-review-actions stock-ai-mode-actions">
+                  <button class="primary-button" type="button" data-stock-ai-run="scanner">軽量スキャン</button>
+                  <button class="primary-button" type="button" data-stock-ai-run="analyst">個別詳細分析</button>
+                  <button class="primary-button" type="button" data-stock-ai-run="judge">全体売買判断</button>
+                  <button class="primary-button" type="button" data-stock-ai-run="critical">重要局面分析</button>
                 </div>
-                <div class="stock-ai-usage-warning" id="stock-ai-usage-unpriced" hidden></div>
-                <div class="subtle" id="stock-ai-usage-history-note" hidden></div>
-                <div class="subtle">1回＝正常完了した一括レビュー1件（銘柄数に関係なし）です。この集計は旧stock-review経路だけが対象です。金額はtoken使用量に基づく概算で、正式な請求額ではありません。OpenAI PlatformのUsage Dashboardを正本として確認してください。</div>
-              </div>
-              <div class="ai-review-control-grid">
-                <select class="input" id="stock-ai-mode" aria-label="AI分析モード">
-                  <option value="scanner">軽量スキャン</option>
-                  <option value="analyst">個別詳細分析</option>
-                  <option value="judge" selected>全体売買判断</option>
-                  <option value="critical">重要局面分析</option>
-                </select>
-                <select class="input" id="stock-ai-target" aria-label="AI分析対象">
-                  <option value="holdings">保有銘柄</option>
-                  <option value="candidates">狙い中銘柄</option>
-                  <option value="watchlist">監視銘柄</option>
-                  <option value="selected">選択銘柄</option>
-                  <option value="mock">テスト用仮保有銘柄</option>
-                </select>
-                <input class="input" id="stock-ai-tickers" placeholder="選択銘柄: 7203,7974" aria-label="選択銘柄コード" />
-                <input class="input" id="stock-ai-max-web-search" type="number" min="0" max="10" value="5" aria-label="Web検索最大回数" />
-                <select class="input" id="stock-ai-position-intent" aria-label="建玉意図">
-                  <option value="">建玉意図: 未入力</option>
-                  <option value="short">短期玉</option>
-                  <option value="mid">中期玉</option>
-                  <option value="long">長期玉</option>
-                  <option value="short_and_mid">短期＋中期</option>
-                  <option value="core">コア玉</option>
-                  <option value="add">追加玉</option>
-                </select>
-                <input class="input" id="stock-ai-user-hypothesis" placeholder="仮説: 防衛テーマと決算期待、短期過熱など" aria-label="ユーザー仮説" />
-              </div>
-              <div class="ai-review-actions">
-                <button class="primary-button" type="button" data-stock-ai-run="scanner">軽量スキャン</button>
-                <button class="primary-button" type="button" data-stock-ai-run="analyst">個別詳細分析</button>
-                <button class="primary-button" type="button" data-stock-ai-run="judge">全体売買判断</button>
-                <button class="primary-button" type="button" data-stock-ai-run="critical">重要局面分析</button>
-                <button class="ghost-button" type="button" data-stock-ai-run="prompt_only">ChatGPT投入用プロンプトを生成</button>
-                <button class="ghost-button" type="button" id="stock-ai-copy-prompt" disabled>プロンプトをコピー</button>
-              </div>
-              <div class="checkbox-row">
-                <label><input id="portfolio-ai-web-search" type="checkbox" /> Web検索ON</label>
-                <label><input id="portfolio-ai-mock-response" type="checkbox" /> APIなしのサンプル表示（課金なし）</label>
-                <label><input id="stock-ai-save-result" type="checkbox" checked /> 結果保存</label>
-                <label><input id="stock-ai-use-cache" type="checkbox" checked /> 前回結果の再表示</label>
-              </div>
-              <div class="search-feedback" id="portfolio-ai-review-feedback">未実行</div>
-              <textarea class="textarea prompt-output" id="stock-ai-prompt-output" readonly placeholder="ChatGPT投入用プロンプト"></textarea>
+                <details class="stock-ai-details" id="stock-ai-details">
+                  <summary>詳細設定・利用量・ChatGPT用プロンプト</summary>
+                  <div class="stock-ai-details-content">
+                    <label class="stock-ai-field" for="stock-ai-max-web-search">
+                      <span>Web検索最大回数</span>
+                      <input class="input" id="stock-ai-max-web-search" type="number" min="0" max="10" value="5" aria-label="Web検索最大回数" />
+                    </label>
+                    <div class="checkbox-row">
+                      <label><input id="portfolio-ai-mock-response" type="checkbox" /> APIなしのサンプル表示（課金なし）</label>
+                      <label><input id="stock-ai-save-result" type="checkbox" checked /> 結果保存</label>
+                      <label><input id="stock-ai-use-cache" type="checkbox" checked /> 前回結果の再表示</label>
+                    </div>
+                    <div class="stock-ai-usage-panel" id="stock-ai-usage" aria-live="polite">
+                      <div class="stock-ai-usage-grid">
+                        <div>
+                          <div class="eyebrow">アプリ内利用量（legacy stock-review）</div>
+                          <div class="stock-ai-usage-value" id="stock-ai-usage-today">本日 成功レビュー -- / --回・残り --・OpenAI呼出 --回・概算 $--</div>
+                        </div>
+                        <div>
+                          <div class="eyebrow">月間利用量</div>
+                          <div class="stock-ai-usage-value" id="stock-ai-usage-month">今月 成功レビュー --回・OpenAI呼出 --回・概算 $--</div>
+                        </div>
+                      </div>
+                      <div class="stock-ai-usage-warning" id="stock-ai-usage-unpriced" hidden></div>
+                      <div class="subtle" id="stock-ai-usage-history-note" hidden></div>
+                      <div class="subtle">1回＝正常完了した一括レビュー1件（銘柄数に関係なし）です。この集計は旧stock-review経路だけが対象です。金額はtoken使用量に基づく概算で、正式な請求額ではありません。OpenAI PlatformのUsage Dashboardを正本として確認してください。</div>
+                    </div>
+                    <div class="ai-review-actions">
+                      <button class="ghost-button" type="button" data-stock-ai-run="prompt_only">ChatGPT投入用プロンプトを生成</button>
+                      <button class="ghost-button" type="button" id="stock-ai-copy-prompt" disabled>プロンプトをコピー</button>
+                    </div>
+                    <textarea class="textarea prompt-output" id="stock-ai-prompt-output" readonly hidden aria-label="ChatGPT投入用プロンプト" placeholder="ChatGPT投入用プロンプト"></textarea>
+                  </div>
+                </details>
+              </section>
+              <section class="stock-ai-result-pane" aria-labelledby="stock-ai-result-heading">
+                <h3 id="stock-ai-result-heading">分析結果</h3>
+                <p class="subtle">送信時の条件と回答の時点を確認できます。条件を変えた場合は再実行してください。</p>
+                <div class="search-feedback" id="portfolio-ai-review-feedback" role="status" aria-live="polite">未実行</div>
+                <a
+                  class="action-link ai-review-reader-link"
+                  id="portfolio-ai-review-reader-link"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  referrerpolicy="no-referrer"
+                  hidden
+                >回答を別タブ／ウィンドウで大きく表示</a>
+                <div class="ai-review-grid" id="portfolio-ai-review-results" aria-live="polite" aria-busy="false"></div>
+              </section>
             </div>
-            <a
-              class="action-link ai-review-reader-link"
-              id="portfolio-ai-review-reader-link"
-              target="_blank"
-              rel="noopener noreferrer"
-              referrerpolicy="no-referrer"
-              hidden
-            >回答を別タブ／ウィンドウで大きく表示</a>
-            <div class="ai-review-grid" id="portfolio-ai-review-results" aria-live="polite" aria-busy="false"></div>
             <div id="portfolio-space-editor">
               <form class="search-row" id="portfolio-form" style="margin-top: 12px;">
                 <input class="search-input" id="portfolio-ticker-input" name="ticker_code" placeholder="7203 / 285A" aria-label="保有銘柄コード" />
@@ -1412,6 +1524,10 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
         collectionFormMode: null,
         dashboardRequestId: 0,
         stockAiRequestId: 0,
+        stockAiBusyRequestId: null,
+        stockAiInputIdentity: null,
+        stockAiDataSynchronized: true,
+        stockAiDataRevision: 0,
         stockAiHistoryRequestId: 0,
         stockAiHistoryDetailRequestId: 0,
       };
@@ -1690,6 +1806,9 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
         Array.from(sourceElement.children).forEach((child) => {
           const clonedChild = child.cloneNode(true);
           clonedChild.querySelectorAll("details.ai-raw-output").forEach((details) => {
+            details.open = true;
+          });
+          clonedChild.querySelectorAll("details.ai-source-details").forEach((details) => {
             details.open = true;
           });
           content.appendChild(clonedChild);
@@ -2016,6 +2135,96 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
         return `<section class="ai-result-section"><h4>参照情報</h4><div class="source-links">${links}</div></section>`;
       };
 
+      const aiWebSearchEvidenceLabel = (data) => {
+        const prefix = data?.cache_hit ? "前回生成時の" : "";
+        if (data?.web_search_status === "executed") {
+          return `${prefix}Web検索を実行（主張の裏付けは別確認）`;
+        }
+        if (data?.web_search_status === "not_run") {
+          return `${prefix}Web検索は未実行（最新のWeb裏取りなし）`;
+        }
+        return `${prefix}Web検索実績は未確認（最新のWeb裏取り未確認）`;
+      };
+
+      const aiWebSearchSettingLabel = (data) => {
+        const effective = data?.include_web_search ? "ON" : "OFF";
+        const requested = data?.web_search_requested;
+        return typeof requested === "boolean"
+          ? `Web検索要求${requested ? "ON" : "OFF"}・実効設定${effective}`
+          : `Web検索設定${effective}（元の要求は未記録）`;
+      };
+
+      const renderAiRequestSnapshot = (review) => {
+        const snapshot = review?.requestSnapshot;
+        if (!snapshot) return "";
+        const positionLabels = {
+          short: "短期玉", mid: "中期玉", long: "長期玉", short_and_mid: "短期＋中期",
+          core: "コア玉", add: "追加玉",
+        };
+        const conditions = [
+          `分析方法: ${aiModeLabel(snapshot.mode)}`,
+          `対象: ${review.contextLabel || aiHistoryTargetLabel(snapshot.target)}`,
+          `建玉意図: ${positionLabels[snapshot.position_intent] || snapshot.position_intent || "未入力"}`,
+          `ユーザー仮説: ${snapshot.user_hypothesis || "未入力"}`,
+          `Web検索要求: ${snapshot.include_web_search ? "ON" : "OFF"} / 最大回数設定 ${snapshot.max_web_search_calls ?? "未記録"}`,
+          `サンプル回答: ${snapshot.mock_response || snapshot.use_mock_holdings ? "ON" : "OFF"}`,
+        ];
+        if (snapshot.tickers?.length) conditions.push(`指定コード: ${snapshot.tickers.map(publicSecurityCode).join("、")}`);
+        return `<article class="ai-review-card ai-request-snapshot"><h3 class="ai-card-title">送信時の分析条件</h3>${renderCompactList(conditions)}</article>`;
+      };
+
+      const renderAiDataBasis = (data) => {
+        const generated = data?.generated_at ? formatDateTime(data.generated_at) : "未記録";
+        const series = [
+          ["price", "価格", ["price", "change_rate", "volume", "support_levels", "resistance_levels"]],
+          ["technical", "テクニカル", ["ma_5", "ma_25", "ma_75", "rsi", "macd", "upper_wick_ratio", "lower_wick_ratio", "body_ratio", "close_position_ratio"]],
+          ["flow", "需給", ["credit_ratio"]],
+          ["news", "ニュース", ["recent_news"]],
+          ["events", "決算予定", ["earnings_date"]],
+        ];
+        const names = new Map([...(data?.holdings_snapshot || []), ...(data?.candidates_snapshot || [])]
+          .map((item) => [item.ticker, item.name]));
+        const snapshots = data?.market_snapshot || [];
+        const items = snapshots.map((snapshot) => {
+          const ticker = publicSecurityCode(snapshot.ticker);
+          const name = names.get(snapshot.ticker);
+          const unknownLabel = `名称未登録（${ticker}）`;
+          const label = name && name !== unknownLabel ? `${name}（${ticker}）` : unknownLabel;
+          const sourceDetails = [];
+          const dates = series.map(([key, title, fields]) => {
+            const present = fields.some((field) => {
+              const value = snapshot[field];
+              return Array.isArray(value) ? value.length > 0 : value !== null && value !== undefined && value !== "";
+            });
+            if (!present) return `${title}: 未入力／未取得`;
+            const records = snapshot.source_metadata?.[key] || [];
+            if (!records.length) return `${title}: 基準日時未取得・由来未確認`;
+            sourceDetails.push(`${title}: ${records.map((record) => [
+              record.as_of || "基準日時未取得",
+              record.source || "由来未確認",
+              record.version ? `更新版 ${record.version}` : "",
+            ].filter(Boolean).join(" / ")).join("、")}`);
+            const recordedDates = [...new Set(records.map((record) => record.as_of).filter(Boolean))].sort();
+            const range = recordedDates.length > 1
+              ? `${recordedDates[0]} ～ ${recordedDates[recordedDates.length - 1]}`
+              : recordedDates[0] || "基準日時未取得";
+            const sources = [...new Set(records.map((record) => record.source || "由来未確認"))].join("、");
+            const missingDates = records.filter((record) => !record.as_of).length;
+            const missingNote = missingDates && recordedDates.length ? ` / 基準日時未取得 ${missingDates}件` : "";
+            return `${title}: ${range} / ${sources}${records.length > 1 ? `（${records.length}件）` : ""}${missingNote}`;
+          });
+          const details = sourceDetails.length
+            ? `<details class="ai-source-details"><summary>出典・基準日時の詳細</summary>${renderCompactList(sourceDetails)}</details>`
+            : "";
+          return `<li><strong>${escapeHtml(label)}</strong>${renderCompactList(dates)}${details}</li>`;
+        }).join("");
+        return `<section class="ai-result-section ai-data-basis"><h4>回答の時点と元データ</h4>
+          ${renderAiParagraph(`回答生成日時: ${generated}`)}
+          ${items ? `<ul class="compact-list">${items}</ul>` : renderAiParagraph("元データの基準日時: 未記録（入力系列も未確認）")}
+          ${renderAiParagraph("回答生成日時は元データの基準日時ではありません。未観測のニュース等の最新性は保証しません。")}
+        </section>`;
+      };
+
       const renderAiReviewSummary = (data, contextLabel = "") => {
         const summary = data.portfolio_summary || {};
         const overallView = String(summary.overall_view || "").trim();
@@ -2030,15 +2239,19 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
           ? ""
           : summary.market_temperature;
         const chips = [
-          data.web_search_used ? "Web検索あり" : "Web検索なしの簡易分析",
+          aiWebSearchEvidenceLabel(data),
+          aiWebSearchSettingLabel(data),
           data.mode === "prompt_only"
             ? "OpenAI API非呼び出し"
             : (data.mock_response ? "API非呼び出しmock" : "OpenAI API"),
           data.model ? `model ${data.model}` : "",
           data.reasoning_effort ? `reasoning ${data.reasoning_effort}` : "",
           data.web_search_policy ? `web policy ${data.web_search_policy}` : "",
-          data.estimated_cost_usd != null ? `今回の事前概算 $${Number(data.estimated_cost_usd || 0).toFixed(4)}` : "",
-          data.actual_usage?.web_search_calls ? `Web検索 ${data.actual_usage.web_search_calls}回` : "",
+          data.estimated_cost_usd != null ? `${data.cache_hit ? "前回生成時の" : "今回の"}事前概算 $${Number(data.estimated_cost_usd || 0).toFixed(4)}` : "",
+          data.web_search_status === "executed" && data.actual_usage?.web_search_calls
+            ? `${data.cache_hit ? "前回生成時の" : ""}Web検索 ${data.actual_usage.web_search_calls}回${data.actual_usage.web_search_calls_known === false ? "以上（総数未確認）" : ""}`
+            : "",
+          data.cache_hit ? "今回の新規検索0回・API呼出0回・追加利用量なし" : "",
           data.cache_hit ? "前回結果" : "",
           aiHoldingsSourceLabel(data.holdings_source),
           contextLabel,
@@ -2050,6 +2263,7 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
               <span class="subtle">${escapeHtml(formatDateTime(data.generated_at))}</span>
             </div>
             ${renderAiParagraph(primarySummary, "ai-summary-lead")}
+            ${renderAiDataBasis(data)}
             ${renderAiTextSection("ポートフォリオ総括", additionalPortfolioSummary)}
             <div class="chips">
               ${chips.map((chip) => `<span class="chip">${escapeHtml(chip)}</span>`).join("")}
@@ -2333,7 +2547,8 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
               <span class="chip">${escapeHtml(stockPreview)}</span>
               ${item?.analysis_mode ? `<span class="chip">期間 ${escapeHtml(item.analysis_mode)}</span>` : ""}
               ${item?.model ? `<span class="chip">model ${escapeHtml(item.model)}</span>` : ""}
-              <span class="chip">${item?.include_web_search ? "Web検索設定あり" : "Web検索なし"}</span>
+              <span class="chip">${escapeHtml(aiWebSearchSettingLabel(item))}</span>
+              <span class="chip">${escapeHtml(aiWebSearchEvidenceLabel(item))}</span>
               ${item?.mock_response ? '<span class="chip warn">API非呼び出しmock</span>' : ""}
               ${item?.cache_hit ? '<span class="chip">キャッシュ結果</span>' : ""}
               ${watchlistLabel}
@@ -2469,6 +2684,8 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
                 <span class="chip warn">${escapeHtml(aiHoldingsSourceLabel(data.holdings_source))}</span>
               </div>
               ${renderAiParagraph(data.error?.message || data.portfolio_summary?.overall_view || "分析できませんでした。")}
+              <div class="chips"><span class="chip">${escapeHtml(aiWebSearchSettingLabel(data))}</span><span class="chip">${escapeHtml(aiWebSearchEvidenceLabel(data))}</span></div>
+              ${renderAiDataBasis(data)}
               ${renderAiRawFallback(data.raw_model_output)}
             </article>
           `);
@@ -2569,6 +2786,37 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
         });
       };
 
+      const syncStockAiExecutionState = () => {
+        setPortfolioAiButtonsDisabled(state.stockAiBusyRequestId !== null || !state.stockAiDataSynchronized || !state.data);
+        const feedback = document.getElementById("portfolio-ai-review-feedback");
+        if (feedback && state.portfolioAiReview.status === "idle") {
+          if (!state.stockAiDataSynchronized) {
+            feedback.textContent = "保有・リスト情報が未同期です。画面を再取得してから分析してください。";
+          } else if (state.stockAiBusyRequestId !== null) {
+            feedback.textContent = "条件変更により前の回答は無効です。実行中の処理の完了を待っています。";
+          } else {
+            feedback.textContent = aiReviewResultStatusLabel({ status: "idle" });
+          }
+        }
+      };
+
+      const stockAiInputIdentity = () => JSON.stringify([
+        ...[
+          "stock-ai-mode", "stock-ai-target", "stock-ai-tickers", "stock-ai-max-web-search",
+          "stock-ai-user-hypothesis", "stock-ai-position-intent",
+        ].map((id) => document.getElementById(id)?.value || ""),
+        ...["portfolio-ai-web-search", "portfolio-ai-mock-response"]
+          .map((id) => document.getElementById(id)?.checked ?? false),
+        state.activeManagementSpace,
+        Array.from(activeWatchlistSelection()),
+      ]);
+
+      const markStockAiDataUnsynced = () => {
+        state.stockAiDataRevision += 1;
+        state.stockAiDataSynchronized = false;
+        invalidateStockAiReview();
+      };
+
       const parseTickerInput = () => {
         const value = document.getElementById("stock-ai-tickers")?.value || "";
         return value
@@ -2594,8 +2842,8 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
           average_price: null,
         }));
         const known = new Map([
-          ...(state.data?.portfolio_items || []).map((item) => [item.ticker_code, item]),
           ...(state.data?.watchlist_items || []).map((item) => [item.ticker_code, item]),
+          ...(state.data?.portfolio_items || []).map((item) => [item.ticker_code, item]),
         ]);
         const manual = parseTickerInput().map((ticker) => {
           const item = known.get(ticker);
@@ -2603,8 +2851,8 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
             ticker,
             name: item?.name || ticker,
             market: item?.market || "TSE",
-            quantity: Number(item?.quantity || 0),
-            average_price: item?.average_cost ? Number(item.average_cost) : null,
+            quantity: state.data?.mode === "mock" ? 0 : Number(item?.quantity || 0),
+            average_price: state.data?.mode === "mock" || item?.average_cost == null ? null : Number(item.average_cost),
           };
         });
         const merged = new Map();
@@ -2618,14 +2866,14 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
         const includeWebSearch = document.getElementById("portfolio-ai-web-search")?.checked ?? false;
         const webCalls = Number(document.getElementById("stock-ai-max-web-search")?.value || 0);
         const counts = {
-          holdings: (state.data?.portfolio_items || []).length || 7,
+          holdings: (state.data?.portfolio_items || []).length,
           watchlist: (state.data?.watchlist_items || []).length || 0,
-          candidates: 2,
+          candidates: 0,
           selected: selectedStockAiHoldings().length,
           mock: 9,
         };
         const count = counts[target] ?? 0;
-        if (target === "mock") {
+        if (count === 0 || target === "mock" || document.getElementById("portfolio-ai-mock-response")?.checked) {
           return { count, estimate: 0 };
         }
         const base = { scanner: 0.006, analyst: 0.02, judge: 0.045, critical: 0.075, prompt_only: 0 }[mode] ?? 0.02;
@@ -2724,11 +2972,20 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
       };
 
       const syncStockAiPrompt = (prompt = "") => {
+        const previousPrompt = state.lastManualPrompt;
         state.lastManualPrompt = prompt || "";
         const output = document.getElementById("stock-ai-prompt-output");
         const copyButton = document.getElementById("stock-ai-copy-prompt");
-        if (output) output.value = state.lastManualPrompt;
+        if (output) {
+          output.value = state.lastManualPrompt;
+          output.hidden = !state.lastManualPrompt;
+        }
         if (copyButton) copyButton.disabled = !state.lastManualPrompt;
+        const details = document.getElementById("stock-ai-details");
+        if (details && state.lastManualPrompt && state.lastManualPrompt !== previousPrompt
+            && state.portfolioAiReview.data?.mode === "prompt_only") {
+          details.open = true;
+        }
       };
 
       const buildStockAiRequest = (modeOverride = null) => {
@@ -2757,7 +3014,7 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
           target,
           watchlist_id: watchlistId,
           tickers,
-          use_mock_holdings: target === "mock",
+          use_mock_holdings: target === "mock" || (target === "selected" && state.data?.mode === "mock" && selectedWatchlistItems().length > 0),
           holdings,
           include_web_search: includeWebSearch,
           risk_preference: "balanced",
@@ -2823,16 +3080,17 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
         if (review.status === "idle") {
           fill("portfolio-ai-review-results", "");
           syncStockAiPrompt("");
+          syncStockAiExecutionState();
           return;
         }
         if (review.status === "loading") {
           const targetLabel = review.contextLabel || "対象銘柄";
-          fill("portfolio-ai-review-results", `<article class="ai-review-card">${escapeHtml(targetLabel)}を分析中...</article>`);
+          fill("portfolio-ai-review-results", `${renderAiRequestSnapshot(review)}<article class="ai-review-card">${escapeHtml(targetLabel)}を分析中...</article>`);
           syncStockAiPrompt("");
           return;
         }
         if (review.status === "failed") {
-          fill("portfolio-ai-review-results", `<article class="ai-review-card error">分析に失敗しました: ${escapeHtml(review.error || "")}</article>`);
+          fill("portfolio-ai-review-results", `${renderAiRequestSnapshot(review)}<article class="ai-review-card error">分析に失敗しました: ${escapeHtml(review.error || "")}</article>`);
           return;
         }
 
@@ -2846,6 +3104,7 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
         if (status !== "success") {
           const rawOutput = renderAiRawFallback(data.raw_model_output);
           fill("portfolio-ai-review-results", `
+            ${renderAiRequestSnapshot(review)}
             <article class="ai-review-card error">
               <div class="meta">
                 <h3 class="ai-card-title">${escapeHtml(aiReviewResultStatusLabel(data))}</h3>
@@ -2853,6 +3112,8 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
                 ${review.contextLabel ? `<span class="chip">${escapeHtml(review.contextLabel)}</span>` : ""}
               </div>
               ${renderAiParagraph(data.error?.message || data.portfolio_summary?.overall_view || "分析できませんでした。")}
+              <div class="chips"><span class="chip">${escapeHtml(aiWebSearchSettingLabel(data))}</span><span class="chip">${escapeHtml(aiWebSearchEvidenceLabel(data))}</span></div>
+              ${renderAiDataBasis(data)}
               ${rawOutput}
             </article>
           `);
@@ -2864,6 +3125,7 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
         const stockCards = (data.stocks || []).map(renderAiStockCard).join("");
 
         fill("portfolio-ai-review-results", `
+          ${renderAiRequestSnapshot(review)}
           ${renderAiReviewSummary(data, review.contextLabel || "")}
           ${stockCards}
         `);
@@ -2872,8 +3134,19 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
       };
 
       const runPortfolioAiReview = async (modeOverride = null) => {
+        if (state.stockAiBusyRequestId !== null || !state.stockAiDataSynchronized || !state.data) {
+          syncStockAiExecutionState();
+          return;
+        }
         const payloadBody = buildStockAiRequest(modeOverride);
-        const reviewContext = stockAiReviewContext(payloadBody);
+        if (state.stockAiInputIdentity !== stockAiInputIdentity()) {
+          invalidateStockAiReview();
+        }
+        const reviewContext = {
+          ...stockAiReviewContext(payloadBody),
+          requestSnapshot: JSON.parse(JSON.stringify(payloadBody)),
+        };
+        state.stockAiInputIdentity = stockAiInputIdentity();
         if (payloadBody.target === "selected" && !payloadBody.holdings.length && !payloadBody.tickers.length) {
           state.portfolioAiReview = {
             status: "failed",
@@ -2889,6 +3162,7 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
           if (!ok) return;
         }
         const requestId = ++state.stockAiRequestId;
+        state.stockAiBusyRequestId = requestId;
         state.portfolioAiReview = {
           status: "loading",
           data: null,
@@ -2915,8 +3189,11 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
             ...reviewContext,
           };
         } finally {
+          if (state.stockAiBusyRequestId === requestId) {
+            state.stockAiBusyRequestId = null;
+            syncStockAiExecutionState();
+          }
           if (requestId === state.stockAiRequestId) {
-            setPortfolioAiButtonsDisabled(false);
             renderPortfolioAiReview();
           }
           await Promise.all([loadStockAiUsage(), loadStockAiHistory()]);
@@ -2924,6 +3201,11 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
       };
 
       const invalidateStockAiReview = () => {
+        state.stockAiInputIdentity = stockAiInputIdentity();
+        if (state.portfolioAiReview.status === "idle" && !state.lastManualPrompt) {
+          syncStockAiExecutionState();
+          return;
+        }
         state.stockAiRequestId += 1;
         state.portfolioAiReview = {
           status: "idle",
@@ -2932,8 +3214,8 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
           contextLabel: null,
           readerTitle: null,
         };
-        setPortfolioAiButtonsDisabled(false);
         renderPortfolioAiReview();
+        syncStockAiExecutionState();
       };
 
       const syncWatchlistSelectionToAiTarget = () => {
@@ -2965,6 +3247,17 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
           webSearch.checked = target !== "mock" && ["analyst", "judge", "critical"].includes(mode);
           updateStockAiCost();
         };
+        // Only analysis inputs invalidate an answer. Saving and cache reuse are
+        // execution preferences and remain outside the semantic input identity.
+        const onAnalysisInput = (event) => {
+          if (state.stockAiInputIdentity !== stockAiInputIdentity()) {
+            if (["stock-ai-mode", "stock-ai-target"].includes(event.target.id)) {
+              syncWebSearchDefaultForMode();
+            }
+            invalidateStockAiReview();
+          }
+          updateStockAiCost();
+        };
         [
           "stock-ai-mode",
           "stock-ai-target",
@@ -2974,17 +3267,15 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
           "stock-ai-position-intent",
           "portfolio-ai-web-search",
           "portfolio-ai-mock-response",
-          "stock-ai-save-result",
-          "stock-ai-use-cache",
         ].forEach((id) => {
           const element = document.getElementById(id);
           if (!element) return;
-          element.addEventListener("input", updateStockAiCost);
-          element.addEventListener("change", updateStockAiCost);
+          element.addEventListener("input", onAnalysisInput);
+          element.addEventListener("change", onAnalysisInput);
         });
-        document.getElementById("stock-ai-mode")?.addEventListener("change", syncWebSearchDefaultForMode);
-        document.getElementById("stock-ai-target")?.addEventListener("change", syncWebSearchDefaultForMode);
         syncWebSearchDefaultForMode();
+        state.stockAiInputIdentity = stockAiInputIdentity();
+        syncStockAiExecutionState();
         updateStockAiCost();
       };
 
@@ -3037,6 +3328,8 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
                 <span class="chip warn">${escapeHtml(aiHoldingsSourceLabel(data.holdings_source))}</span>
               </div>
               ${renderAiParagraph(data.error?.message || data.portfolio_summary?.overall_view || "分析できませんでした。")}
+              <div class="chips"><span class="chip">${escapeHtml(aiWebSearchSettingLabel(data))}</span><span class="chip">${escapeHtml(aiWebSearchEvidenceLabel(data))}</span></div>
+              ${renderAiDataBasis(data)}
               ${rawOutput}
             </article>
           `);
@@ -3068,12 +3361,12 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
         renderWatchlistAiReview();
         try {
           const payload = await postJson("/portfolio/ai-review", {
-            use_mock_holdings: false,
+            use_mock_holdings: state.data?.mode === "mock",
             holdings: selectedItems.map((item) => ({
               ticker: item.ticker_code,
               name: item.name,
               market: item.market,
-              quantity: 1,
+              quantity: 0,
               average_price: null,
             })),
             analysis_mode: "daily",
@@ -4369,6 +4662,7 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
 
       const loadDashboard = async (tickerCode = null, watchlistId = activeWatchlistId()) => {
         const requestId = ++state.dashboardRequestId;
+        const dataRevision = state.stockAiDataRevision;
         const requestedWatchlistId = watchlistId === null || watchlistId === undefined
           ? null
           : Number(watchlistId);
@@ -4379,14 +4673,17 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
         const data = await fetchJson(`/ui/dashboard/data${query ? `?${query}` : ""}`);
         const activeScopeId = activeWatchlistId();
         if (requestId !== state.dashboardRequestId) return false;
+        if (dataRevision !== state.stockAiDataRevision) return false;
         if (PAGE_MODE === "top" && requestedWatchlistId !== activeScopeId) return false;
         state.data = data;
+        state.stockAiDataSynchronized = true;
         renderAll(data);
         renderPortfolioAiReview();
         renderWatchlistAiReview();
         if (PAGE_MODE === "top") syncWatchlistSelectionToAiTarget();
         updateStockAiCost();
         restoreManualFeedback();
+        syncStockAiExecutionState();
         return true;
       };
 
@@ -4724,7 +5021,7 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
       const selectManagementSpace = async (spaceKey) => {
         const nextSpace = spaceKey || "portfolio";
         if (state.activeManagementSpace !== nextSpace) {
-          invalidateStockAiReview();
+          markStockAiDataUnsynced();
         }
         state.activeManagementSpace = nextSpace;
         closeWatchlistCollectionForm();
@@ -4788,6 +5085,7 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
         try {
           if (mode === "rename" && collection) {
             await patchJson(`/watchlists/${collection.id}`, { name });
+            if (activeWatchlistId() === collection.id) markStockAiDataUnsynced();
             closeWatchlistCollectionForm();
             await loadDashboard(state.data?.selected_ticker_code || null, activeWatchlistId());
             setManagementSpaceFeedback(`「${name}」へ名前を変更しました。`, "success");
@@ -4795,7 +5093,7 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
           }
           const created = await postJson("/watchlists", { name });
           if (state.activeManagementSpace === startingSpace) {
-            invalidateStockAiReview();
+            markStockAiDataUnsynced();
             state.activeManagementSpace = watchlistSpaceKey(created.id);
             const targetInput = document.getElementById("stock-ai-target");
             if (targetInput) targetInput.value = "watchlist";
@@ -4820,7 +5118,7 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
           state.watchlistSelections.delete(collection.id);
           const fallback = (state.data?.watchlist_collections || []).find((item) => item.is_default && item.id !== collection.id);
           if (activeWatchlistId() === collection.id) {
-            invalidateStockAiReview();
+            markStockAiDataUnsynced();
             state.activeManagementSpace = fallback ? watchlistSpaceKey(fallback.id) : "portfolio";
             const targetInput = document.getElementById("stock-ai-target");
             if (targetInput) targetInput.value = fallback ? "watchlist" : "holdings";
@@ -4844,7 +5142,7 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
             name: item.name,
             market: item.market,
           });
-          if (activeWatchlistId() === collection.id) invalidateStockAiReview();
+          if (activeWatchlistId() === collection.id) markStockAiDataUnsynced();
           await loadDashboard(state.data?.selected_ticker_code || null, activeWatchlistId());
           setManagementSpaceFeedback(`「${collection.name}」へ ${item.name} を追加しました。`, "success");
         } catch (error) {
@@ -4860,7 +5158,7 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
           await deleteJson(`/watchlists/${collection.id}/items/${encodeURIComponent(tickerCode)}`);
           const selection = state.watchlistSelections.get(collection.id);
           selection?.delete(tickerCode);
-          if (activeWatchlistId() === collection.id) invalidateStockAiReview();
+          if (activeWatchlistId() === collection.id) markStockAiDataUnsynced();
           await loadDashboard(state.data?.selected_ticker_code || null, activeWatchlistId());
           setManagementSpaceFeedback(`「${collection.name}」から ${publicSecurityCode(tickerCode)} を外しました。`, "success");
         } catch (error) {
@@ -4943,6 +5241,7 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
         }
 
         setPortfolioFeedback("保有銘柄を保存中...");
+        let saved = false;
         try {
           await postJson("/portfolio", {
             ticker_code: tickerCode,
@@ -4950,13 +5249,17 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
             average_cost: averageCost || null,
             note: noteInput.value.trim() || null,
           });
-          setPortfolioFeedback("保有銘柄を保存しました。", "success");
+          saved = true;
+          markStockAiDataUnsynced();
           await loadDashboard(state.data?.selected_ticker_code || null);
+          setPortfolioFeedback("保有銘柄を保存しました。", "success");
           quantityInput.value = "";
           averageCostInput.value = "";
           noteInput.value = "";
         } catch (error) {
-          setPortfolioFeedback(`保有銘柄の保存に失敗しました: ${error.message || String(error)}`, "error");
+          setPortfolioFeedback(saved
+            ? "保有銘柄は保存済みですが、画面の再取得に失敗しました。情報は未同期です。"
+            : `保有銘柄の保存に失敗しました: ${error.message || String(error)}`, "error");
         }
       };
 
@@ -4977,12 +5280,17 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
       const removePortfolioHolding = async (tickerCode) => {
         if (!tickerCode) return;
         setPortfolioFeedback(`${tickerCode} を削除中...`);
+        let removed = false;
         try {
           await deleteJson(`/portfolio/${encodeURIComponent(tickerCode)}`);
-          setPortfolioFeedback(`${tickerCode} を portfolio から外しました。`, "success");
+          removed = true;
+          markStockAiDataUnsynced();
           await loadDashboard(state.data?.selected_ticker_code || null);
+          setPortfolioFeedback(`${tickerCode} を portfolio から外しました。`, "success");
         } catch (error) {
-          setPortfolioFeedback(`削除に失敗しました: ${error.message || String(error)}`, "error");
+          setPortfolioFeedback(removed
+            ? "保有銘柄は削除済みですが、画面の再取得に失敗しました。情報は未同期です。"
+            : `削除に失敗しました: ${error.message || String(error)}`, "error");
         }
       };
 

@@ -51,12 +51,21 @@ from app.schemas.portfolio_ai import (
     PortfolioAiSummary,
     PortfolioAiUsage,
     PortfolioMarketSnapshot,
+    PortfolioSnapshotSource,
     ReasoningEffort,
     ReviewStatus,
 )
 from app.services.ai_usage import get_legacy_ai_usage_ledger
 from app.services.mock_watchlist import mock_watchlist_service
 from app.services.portfolio import portfolio_service
+from app.services.portfolio_ai_cache import (
+    CACHE_FORMAT_VERSION,
+    SERIES_FIELDS,
+    build_cache_key,
+    cache_entry_is_current,
+    cache_ineligibility,
+    prompt_fingerprint,
+)
 from app.services.watchlist import WatchlistCollectionNotFoundError, WatchlistService
 from kabuhandan_hojo.services.securities import SecurityService
 
@@ -457,6 +466,10 @@ class PortfolioAiReviewService:
         prices = self.security_service.latest_prices(session, ticker, limit=80)
         if prices:
             latest = prices[-1]
+            snapshot.source_metadata["price"] = [
+                self._snapshot_source(record, as_of_field="target_date")
+                for record in prices[-25:]
+            ]
             previous = prices[-2] if len(prices) >= 2 else None
             snapshot.price = self._to_float(latest.close_price)
             snapshot.volume = int(latest.volume) if latest.volume is not None else None
@@ -471,6 +484,11 @@ class PortfolioAiReviewService:
 
         feature = self.security_service.latest_feature(session, ticker)
         if feature is not None:
+            snapshot.source_metadata["technical"] = [
+                self._snapshot_source(
+                    feature, as_of_field="target_date", source="local:technical_feature_daily",
+                )
+            ]
             snapshot.ma_5 = self._to_float(feature.sma_5)
             snapshot.ma_25 = self._to_float(feature.sma_25)
             snapshot.ma_75 = self._to_float(feature.sma_75)
@@ -483,11 +501,29 @@ class PortfolioAiReviewService:
 
         flow = self.security_service.latest_flow(session, ticker)
         if flow is not None:
+            snapshot.source_metadata["flow"] = [self._snapshot_source(flow, as_of_field="target_date")]
             snapshot.credit_ratio = self._to_float(flow.credit_ratio)
 
         events = self.security_service.recent_events(session, ticker, limit=3)
         snapshot.recent_news = [event.summary_text for event in events]
+        if events:
+            snapshot.source_metadata["news"] = [
+                self._snapshot_source(event, as_of_field="event_time") for event in events
+            ]
         return snapshot
+
+    @staticmethod
+    def _snapshot_source(
+        record: Any, *, as_of_field: str, source: str | None = None,
+    ) -> PortfolioSnapshotSource:
+        """Copy observed record dates; never substitute processing time."""
+        as_of = getattr(record, as_of_field, None)
+        version = getattr(record, "updated_at", None)
+        return PortfolioSnapshotSource(
+            source=source or getattr(record, "source_name", None),
+            as_of=as_of.isoformat() if as_of is not None else None,
+            version=version.isoformat() if version is not None else None,
+        )
 
     def get_technical_snapshot(self, ticker: str, *, session: Session | None = None) -> PortfolioMarketSnapshot:
         """Return technical fields through the same snapshot contract."""
@@ -578,6 +614,8 @@ class PortfolioAiReviewService:
             "mode_label": MODE_LABELS[options.mode],
             "judgement_labels": JUDGEMENT_LABELS,
             "watchlist_id": options.watchlist_id,
+            "holdings_source": holdings_source,
+            "prompt_fingerprint": prompt_fingerprint(prompt_bundle),
             "include_web_search": include_web_search,
             "max_web_search_calls": max_web_search_calls,
         }
@@ -586,7 +624,11 @@ class PortfolioAiReviewService:
         if not holdings and not candidates:
             return self._error_response(
                 status="no_holdings",
-                message="AI分析対象の銘柄がありません。",
+                message=(
+                    "狙い中銘柄が未登録／指定されていません。"
+                    if options.target == "candidates"
+                    else "AI分析対象の銘柄がありません。"
+                ),
                 options=options,
                 holdings=holdings,
                 candidates=candidates,
@@ -645,7 +687,14 @@ class PortfolioAiReviewService:
             return response
 
         cache_key = self._cache_key(request_payload)
-        if options.use_cache and not options.mock_response:
+        cache_reasons = cache_ineligibility(market_snapshots)
+        cache_enabled = settings.openai_review_cache_ttl_seconds > 0 and not cache_reasons
+        if not options.mock_response:
+            if cache_reasons:
+                warnings.append("自動キャッシュ再利用を無効化: " + " / ".join(cache_reasons) + "。保存履歴は明示して閲覧できます。")
+            elif not cache_enabled:
+                warnings.append("設定により自動キャッシュ再利用を無効化しています。保存履歴は明示して閲覧できます。")
+        if options.use_cache and not options.mock_response and cache_enabled:
             cached = self._load_cached_response(cache_key)
             if cached is not None:
                 cached.cache_hit = True
@@ -891,9 +940,11 @@ class PortfolioAiReviewService:
             response.status = "success"
             response.error = None
         response.mode = options.mode
+        response.generated_at = self._tokyo_now()
         response.analysis_mode = options.analysis_mode
         response.holdings_source = holdings_source
-        response.web_search_used = include_web_search
+        for field, value in self._web_search_evidence(options, usage=usage).items():
+            setattr(response, field, value)
         response.include_web_search = include_web_search
         response.web_search_policy = prompt_bundle["web_search_policy"]
         response.mock_response = False
@@ -925,7 +976,7 @@ class PortfolioAiReviewService:
             self._increment_daily_usage()
         if options.save_result:
             history_saved = self._save_ai_review_result_with_warning(response)
-            if history_saved and not raw_fallback:
+            if history_saved and not raw_fallback and cache_enabled:
                 self._save_cached_response(cache_key, response)
         return response
 
@@ -1099,7 +1150,10 @@ class PortfolioAiReviewService:
         if payload.holdings:
             return self._filter_tickers(payload.holdings, payload.tickers), "request"
         if payload.target == "candidates":
-            return [], "candidates"
+            source: HoldingsSource = (
+                "mock" if payload.use_mock_holdings and not payload.candidates else "candidates"
+            )
+            return [], source
         if payload.use_mock_holdings or payload.target == "mock":
             return self._filter_tickers(self.get_mock_holdings(), payload.tickers), "mock"
         if payload.target == "watchlist":
@@ -1108,10 +1162,9 @@ class PortfolioAiReviewService:
             except WatchlistCollectionNotFoundError:
                 return [], "watchlist"
             if watchlist:
-                return self._filter_tickers(watchlist, payload.tickers), "watchlist"
-            if payload.watchlist_id is not None:
-                return [], "watchlist"
-            return self._filter_tickers(self.get_mock_holdings(), payload.tickers), "mock"
+                source = "mock" if get_settings().app_use_mock else "watchlist"
+                return self._filter_tickers(watchlist, payload.tickers), source
+            return [], "watchlist"
         if payload.target == "selected":
             selected = self._resolve_selected_tickers(payload.tickers, session=session)
             return selected, "request" if selected else "none"
@@ -1119,7 +1172,7 @@ class PortfolioAiReviewService:
         db_holdings = self.get_holdings(session)
         if db_holdings:
             return self._filter_tickers(db_holdings, payload.tickers), "database"
-        return self._filter_tickers(self.get_mock_holdings(), payload.tickers), "mock"
+        return [], "none"
 
     def _resolve_candidates(
         self,
@@ -1129,12 +1182,10 @@ class PortfolioAiReviewService:
     ) -> list[PortfolioAiCandidate]:
         if payload.candidates:
             return self._filter_candidate_tickers(payload.candidates, payload.tickers)
-        if payload.target in {"candidates", "mock"}:
+        if payload.target == "mock" or (
+            payload.target == "candidates" and payload.use_mock_holdings
+        ):
             return self._filter_candidate_tickers(self.get_mock_candidates(), payload.tickers)
-        if payload.target == "selected":
-            candidate_lookup = {candidate.ticker: candidate for candidate in self.get_mock_candidates()}
-            selected = [candidate_lookup[ticker] for ticker in payload.tickers if ticker in candidate_lookup]
-            return self._filter_candidate_tickers(selected, payload.tickers)
         return []
 
     def _hydrate_holding_identities(
@@ -1229,27 +1280,35 @@ class PortfolioAiReviewService:
         return tuple(aliases)
 
     def _resolve_selected_tickers(self, tickers: list[str], *, session: Session | None) -> list[PortfolioAiHolding]:
+        """Use actual positions and master identities; selection never implies ownership."""
+
         if not tickers:
             return []
-        known: dict[str, PortfolioAiHolding] = {}
-        for holding in [*self.get_holdings(session), *self.get_watchlist(session), *self.get_mock_holdings()]:
-            known.setdefault(holding.ticker, holding)
-        for candidate in self.get_mock_candidates():
-            known.setdefault(
-                candidate.ticker,
+        actual_holdings = {
+            holding.ticker: holding for holding in self.get_holdings(session)
+        }
+        selected: list[PortfolioAiHolding] = []
+        for ticker in tickers:
+            normalized = ticker.strip().upper()
+            security = self._find_security_master(session, normalized) if session is not None else None
+            canonical_ticker = security.ticker_code if security is not None else normalized
+            holding = actual_holdings.get(canonical_ticker)
+            if holding is not None:
+                selected.append(holding)
+                continue
+            selected.append(
                 PortfolioAiHolding(
-                    ticker=candidate.ticker,
-                    name=candidate.name,
-                    market=candidate.market,
+                    ticker=canonical_ticker,
+                    name=(
+                        security.name if security is not None
+                        else f"名称未登録（{self._public_security_code(canonical_ticker)}）"
+                    ),
+                    market=security.market if security is not None else None,
                     quantity=0,
                     average_price=None,
-                ),
+                )
             )
-        return [
-            known.get(ticker)
-            or PortfolioAiHolding(ticker=ticker, name=ticker, market="TSE", quantity=0, average_price=None)
-            for ticker in tickers
-        ]
+        return selected
 
     def _filter_tickers(self, holdings: list[PortfolioAiHolding], tickers: list[str]) -> list[PortfolioAiHolding]:
         if not tickers:
@@ -1438,7 +1497,7 @@ class PortfolioAiReviewService:
             include_web_search=False,
             web_search_policy="manual_only",
             estimated_cost_usd=estimated_cost_usd,
-            actual_usage=PortfolioAiUsage(),
+            actual_usage=PortfolioAiUsage(web_search_calls=0, web_search_calls_known=True),
             portfolio_summary=PortfolioAiSummary(
                 overall_view="OpenAI APIを呼ばず、ChatGPTへ手動投入するためのプロンプトを生成しました。",
                 portfolio_summary="生成したプロンプトをコピーして、ChatGPTへ手動で貼り付けてください。自動投稿や回答取得は行いません。",
@@ -1451,7 +1510,7 @@ class PortfolioAiReviewService:
             manual_prompt=manual_prompt,
             status="success",
             holdings_source=holdings_source,
-            web_search_used=False,
+            **self._web_search_evidence(options, no_api=True),
             mock_response=False,
             holdings_snapshot=holdings,
             candidates_snapshot=candidates,
@@ -1648,7 +1707,7 @@ class PortfolioAiReviewService:
             include_web_search=include_web_search,
             web_search_policy=get_mode_profile(options.mode).web_search_policy,
             estimated_cost_usd=estimated_cost_usd,
-            actual_usage=PortfolioAiUsage(web_search_calls=0),
+            actual_usage=PortfolioAiUsage(web_search_calls=0, web_search_calls_known=True),
             input_summary={
                 "target": options.target,
                 "holdings": len(holdings),
@@ -1696,7 +1755,7 @@ class PortfolioAiReviewService:
             warnings=warnings,
             status="success",
             holdings_source=holdings_source,
-            web_search_used=False,
+            **self._web_search_evidence(options, no_api=True),
             mock_response=True,
             holdings_snapshot=holdings,
             candidates_snapshot=candidates,
@@ -1719,7 +1778,14 @@ class PortfolioAiReviewService:
             ticker = item.ticker.strip().upper()
             name = item.name.strip()
             aliases = self._security_code_aliases(ticker)
-            trusted_name = None if not name or name.upper() in aliases else name
+            unknown_labels = {
+                "名称未登録",
+                f"名称未登録（{self._public_security_code(ticker)}）",
+            }
+            trusted_name = (
+                None if not name or name.upper() in aliases or name in unknown_labels
+                else name
+            )
             identity = (ticker, trusted_name)
             for alias in aliases:
                 existing = identities.get(alias)
@@ -1881,7 +1947,7 @@ class PortfolioAiReviewService:
             status="json_parse_failed",
             error=PortfolioAiReviewError(code="json_parse_failed", message=failure_summary),
             holdings_source=holdings_source,
-            web_search_used=include_web_search,
+            **self._web_search_evidence(options, usage=usage),
             mock_response=False,
             holdings_snapshot=holdings,
             candidates_snapshot=candidates,
@@ -1944,7 +2010,11 @@ class PortfolioAiReviewService:
             status=status,  # type: ignore[arg-type]
             error=PortfolioAiReviewError(code=status, message=message),  # type: ignore[arg-type]
             holdings_source=holdings_source,
-            web_search_used=include_web_search,
+            **self._web_search_evidence(
+                options,
+                usage=usage,
+                no_api=status not in {"openai_api_error", "json_parse_failed"},
+            ),
             mock_response=options.mock_response,
             holdings_snapshot=holdings,
             candidates_snapshot=candidates or [],
@@ -2140,10 +2210,52 @@ class PortfolioAiReviewService:
         if not get_settings().openai_enable_web_search:
             warnings.append("OPENAI_ENABLE_WEB_SEARCH=false のため、Web検索は実行しません。")
             return False, warnings
-        if options.max_web_search_calls <= 0:
-            warnings.append("max_web_search_calls=0 のため、Web検索は実行しません。")
+        if self._resolve_max_web_search_calls(options) <= 0:
+            warnings.append("実効 max_web_search_calls=0 のため、Web検索は実行しません。")
             return False, warnings
         return True, warnings
+
+    @staticmethod
+    def _web_search_count_known(usage: PortfolioAiUsage) -> bool:
+        if usage.web_search_calls_known is not None:
+            return usage.web_search_calls_known
+        return "web_search_calls" in usage.model_fields_set
+
+    def _web_search_evidence(
+        self,
+        options: PortfolioAiReviewRequest,
+        *,
+        usage: PortfolioAiUsage | None = None,
+        no_api: bool = False,
+    ) -> dict[str, Any]:
+        """Set server-owned evidence; model sources and claims are never evidence."""
+        requested = (
+            get_mode_profile(options.mode).default_include_web_search
+            if options.include_web_search is None
+            else options.include_web_search
+        )
+        if no_api:
+            status = "not_run"
+        elif usage is not None and usage.web_search_calls > 0:
+            status = "executed"
+        elif usage is not None and self._web_search_count_known(usage):
+            status = "not_run"
+        else:
+            status = "unknown"
+        return {
+            "web_search_requested": requested,
+            "web_search_status": status,
+            "web_search_used": status == "executed",
+        }
+
+    @staticmethod
+    def _web_search_evidence_label(review: PortfolioAiReviewResponse) -> str:
+        prefix = "前回生成時の" if review.cache_hit else ""
+        if review.web_search_status == "executed":
+            return f"{prefix}Web検索を実行（主張の裏付けは別確認）"
+        if review.web_search_status == "not_run":
+            return f"{prefix}Web検索は未実行（最新のWeb裏取りなし）"
+        return f"{prefix}Web検索実績は未確認（最新のWeb裏取り未確認）"
 
     def _resolve_max_web_search_calls(self, options: PortfolioAiReviewRequest) -> int:
         settings = get_settings()
@@ -2191,6 +2303,11 @@ class PortfolioAiReviewService:
             try:
                 review = PortfolioAiReviewResponse.model_validate(raw_entry)
                 history_id = self._history_id(raw_entry)
+                if "web_search_status" not in raw_entry:
+                    # Legacy used=True meant permission, not tool evidence.
+                    # Project conservatively without rewriting the stored record/id.
+                    review.web_search_status = "unknown"
+                    review.web_search_used = False
                 review = self._enrich_response_security_references(
                     review,
                     holdings=review.holdings_snapshot,
@@ -2261,6 +2378,14 @@ class PortfolioAiReviewService:
             watchlist_id=watchlist_id,
             include_web_search=review.include_web_search,
             web_search_used=review.web_search_used,
+            web_search_status=review.web_search_status,
+            web_search_requested=review.web_search_requested,
+            web_search_calls=(
+                review.actual_usage.web_search_calls
+                if review.web_search_status != "unknown"
+                and self._web_search_count_known(review.actual_usage)
+                else None
+            ),
             mock_response=review.mock_response,
             cache_hit=review.cache_hit,
             estimated_cost_usd=max(review.estimated_cost_usd, 0),
@@ -2319,6 +2444,8 @@ class PortfolioAiReviewService:
         normalized_name = " ".join(str(name).split())
         normalized_ticker = str(ticker).strip()
         public_ticker = cls._public_security_code(normalized_ticker)
+        if normalized_name == f"名称未登録（{public_ticker}）":
+            return normalized_name
         if not normalized_name or normalized_name in {normalized_ticker, public_ticker}:
             return public_ticker
         return f"{normalized_name}（{public_ticker}）"
@@ -2337,10 +2464,42 @@ class PortfolioAiReviewService:
             f"- 状態: {self._markdown_inline(status_label)} (`{review.status}`)",
             f"- モデル: {self._markdown_inline(review.model or '未記録')}",
             f"- reasoning: {self._markdown_inline(review.reasoning_effort or '未記録')}",
-            f"- Web検索: {'使用済み' if review.web_search_used else ('有効' if review.include_web_search else 'なし')}",
+            "- Web検索要求: " + (
+                "未記録" if review.web_search_requested is None
+                else "ON" if review.web_search_requested else "OFF"
+            ),
+            f"- Web検索実効設定: {'ON' if review.include_web_search else 'OFF'}",
+            f"- Web検索実績: {self._web_search_evidence_label(review)}",
+            "- 検索の実行有無は、回答の各主張の裏付け成立を保証しません。",
             f"- 実行前概算: ${review.estimated_cost_usd:.4f}",
             "",
         ]
+        if review.web_search_status != "unknown" and self._web_search_count_known(review.actual_usage):
+            lines.extend([f"- 生成時の検索回数: {review.actual_usage.web_search_calls}回", ""])
+        if review.cache_hit:
+            lines.extend(["- 今回の新規検索: 0回（API呼出・追加利用量なし）", ""])
+
+        lines.extend(["## 入力データの基準日時", "", "回答生成日時とは別の、分析に使った記録の時点です。", ""])
+        series_labels = {"price": "価格", "technical": "テクニカル", "flow": "需給",
+                         "news": "ニュース", "events": "予定イベント"}
+        for snapshot in review.market_snapshot:
+            lines.extend([f"### {self._markdown_inline(snapshot.ticker)}", ""])
+            for series, fields in SERIES_FIELDS.items():
+                present = any(getattr(snapshot, field) not in (None, [], "") for field in fields)
+                records = snapshot.source_metadata.get(series, []) if present else []
+                if not present:
+                    detail = "未入力・未取得"
+                elif not records:
+                    detail = "基準日時・由来未取得"
+                else:
+                    detail = " / ".join(
+                        f"{record.as_of or '基準日時未取得'}（{record.source or '由来未取得'}）"
+                        for record in records
+                    )
+                lines.append(f"- {series_labels[series]}: {self._markdown_inline(detail)}")
+            lines.append("")
+        if not review.market_snapshot:
+            lines.extend(["元データの基準日時は未記録です。", ""])
 
         def add_text(title: str, value: Any, *, level: int = 3) -> None:
             if not str(value or "").strip():
@@ -2624,19 +2783,24 @@ class PortfolioAiReviewService:
         return [f"{fence}{language}", value, fence]
 
     def _cache_key(self, request_payload: dict[str, Any]) -> str:
-        raw = json.dumps(request_payload, ensure_ascii=False, sort_keys=True)
-        return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+        return build_cache_key(request_payload)
 
     def _load_cached_response(self, cache_key: str) -> PortfolioAiReviewResponse | None:
         cache = self._read_json_object(AI_REVIEW_CACHE_PATH)
         cached = cache.get(cache_key)
-        if not isinstance(cached, dict):
+        if not cache_entry_is_current(
+            cached, now=self._tokyo_now(),
+            ttl_seconds=get_settings().openai_review_cache_ttl_seconds,
+        ):
             return None
         try:
-            response = PortfolioAiReviewResponse.model_validate(cached)
+            response = PortfolioAiReviewResponse.model_validate(cached["response"])
         except Exception:
             return None
-        if response.status != "success" or response.raw_model_output is not None:
+        if (response.status != "success" or response.raw_model_output is not None
+                or response.mock_response or response.mode == "prompt_only"
+                or cache_ineligibility(response.market_snapshot)
+                or self._cache_key(response.request_payload) != cache_key):
             return None
         return self._enrich_response_security_references(
             response,
@@ -2645,10 +2809,17 @@ class PortfolioAiReviewService:
         )
 
     def _save_cached_response(self, cache_key: str, response: PortfolioAiReviewResponse) -> None:
-        if response.status != "success" or response.raw_model_output is not None:
+        if (response.status != "success" or response.raw_model_output is not None
+                or response.mock_response or response.mode == "prompt_only"
+                or cache_ineligibility(response.market_snapshot)
+                or get_settings().openai_review_cache_ttl_seconds <= 0):
             return
         cache = self._read_json_object(AI_REVIEW_CACHE_PATH)
-        cache[cache_key] = response.model_dump(mode="json")
+        cache[cache_key] = {
+            "format_version": CACHE_FORMAT_VERSION,
+            "recorded_at": self._tokyo_now().isoformat(),
+            "response": response.model_dump(mode="json"),
+        }
         if len(cache) > 50:
             cache = dict(list(cache.items())[-50:])
         self._write_json(AI_REVIEW_CACHE_PATH, cache)
@@ -2741,13 +2912,20 @@ class PortfolioAiReviewService:
         output_items = getattr(response, "output", None)
         web_search_calls = 0
         if isinstance(output_items, list):
-            web_search_calls = sum(1 for item in output_items if getattr(item, "type", None) == "web_search_call")
+            web_search_calls = sum(
+                1 for item in output_items
+                if (item.get("type") if isinstance(item, dict) else getattr(item, "type", None))
+                == "web_search_call"
+            )
         return PortfolioAiUsage(
             input_tokens=input_tokens,
             cached_input_tokens=cached_input_tokens,
             output_tokens=output_tokens,
             reasoning_tokens=reasoning_tokens,
             web_search_calls=web_search_calls,
+            web_search_calls_known=(
+                isinstance(output_items, list) or not include_web_search or max_web_search_calls <= 0
+            ),
             api_calls=1,
         )
 
@@ -2758,6 +2936,9 @@ class PortfolioAiReviewService:
             output_tokens=self._sum_optional_int(primary.output_tokens, secondary.output_tokens),
             reasoning_tokens=self._sum_optional_int(primary.reasoning_tokens, secondary.reasoning_tokens),
             web_search_calls=primary.web_search_calls + secondary.web_search_calls,
+            web_search_calls_known=(
+                self._web_search_count_known(primary) and self._web_search_count_known(secondary)
+            ),
             api_calls=primary.api_calls + secondary.api_calls,
         )
 

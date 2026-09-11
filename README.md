@@ -1,5 +1,16 @@
 # kabuhandan_hojo Phase 0-2
 
+## 2026-09-11 Dashboard AIの入力・実績・cacheと2ペイン
+
+- 通常の保有・監視・候補・選択へmockの数量や取得単価を補完しません。空の狙い中は未登録として終了し、tickerだけの未保有銘柄は数量0・取得単価なしです。明示デモはAPIなしで維持します。
+- 分析条件変更と保有・対象listの保存成功で、現在回答・reader・prompt・copyを失効させます。旧通信が終わるまで重複実行を抑止し、保存成功後のdata再取得失敗では再同期まで再分析を禁止します。保存済み履歴は残ります。
+- Web検索の設定と、providerが返した実績（未実行・実行・未確認）を分けます。検索実行だけで主張の裏付け済みとは扱いません。
+- cacheは意味のある入力、元データ基準日時・version、実際のprompt/schemaを照合します。`OPENAI_REVIEW_CACHE_TTL_SECONDS=300`が既定で、0〜300秒へ短縮・無効化でき、JST日付を跨いで自動再利用しません。300秒は市場の最新性や判断の安全性を保証する値ではありません。入力に使う系列の由来・基準日時が不足する場合は自動再利用を止め、理由を表示します。
+- cache再表示は元の生成日時・検索実績・usageを保持し、今回の新規API・検索・usage・保存は増やしません。旧cache形式はmiss、旧履歴の検索実績不足は未確認として読み、保存履歴を削除しません。
+- Dashboard AIは左に主要条件と4分析方法、右に状態・送信時条件・元データ基準日時・結果を置きます。利用量、Web最大回数、mock、保存、cache、prompt生成・copyは詳細設定へまとめ、960px以下は縦1列です。
+- 現在の仕様は要件v2.2、API v2.5、画面v2.9（`SC-2026-09-11-01`）です。canonical `/ui/analysis`とactive prompt v2026.08.18は維持しています。
+- 検証は[tests/README.md](tests/README.md)に記載したPython回帰、2つのNodeイベントテスト、合成APIだけを使うChromium画面QAで行います。任意の画面QA依存と起動方法は[scripts/README.md](scripts/README.md)を参照してください。
+
 ## 2026-08-19 保存済みAI結果・Markdown / PDF表示
 
 - dashboardの`保存済みAI結果`は、legacy `POST /api/ai/stock-review`を`save_result=true`で新規生成した結果だけをgit管理外のローカル`data/ai_review_history.json`から表示します。直近100件を保存順の新しいものから分析方法別にまとめ、分析方法のプルダウンで切り替えられます。
@@ -8,7 +19,7 @@
 - raw fallbackは画面上で先頭20,000文字までになる場合があり、省略時はその旨と「全文は『Markdown保存』で確認できます。」を表示します。印刷用画面ではraw outputの詳細を開いた状態にして、画面に出ている範囲をPDFへ含めます。
 - 履歴の一覧・詳細・Markdown・印刷用表示は保存済みローカルrecordを読むだけで、OpenAIを再呼び出さず、日次回数、usage、cacheを増やしません。APIキー、prompt全文、内部`request_payload`は履歴一覧へ出さず、詳細responseでも`request_payload`を除外します。
 - 過去のnamed watchlist結果には実行時のlist名を保存していません。履歴では保存済み`watchlist_id`または一般的な対象labelを使い、rename / delete前の古いlist名を推測復元しません。
-- この履歴機能はdashboard legacy stock-review専用です。canonical `/ui/analysis`の保存済み回答一覧・exportは追加していません。現在baselineは要件v2.1、API v2.4、画面v2.8、変更単位`SC-2026-08-19-06`です。
+- この履歴機能はdashboard legacy stock-review専用です。canonical `/ui/analysis`の保存済み回答一覧・exportは追加していません。当時のbaselineは要件v2.1、API v2.4、画面v2.8、変更単位`SC-2026-08-19-06`です。
 
 ## 2026-08-19 legacy AI銘柄名・コード表示修正
 
@@ -124,7 +135,7 @@
 - 用途別に `OPENAI_MODEL_SCANNER` / `OPENAI_MODEL_ANALYST` / `OPENAI_MODEL_JUDGE` / `OPENAI_MODEL_CRITICAL` と対応する `OPENAI_REASONING_*` を設定できます。
 - `OPENAI_ENABLE_WEB_SEARCH=true` を既定にし、`analyst` / `judge` / `critical` はWeb検索ONを標準にします。`scanner` はOFFでも実行でき、その場合は「最新Web確認なし」のwarningを返します。
 - 1回あたりの対象銘柄数、日次実行回数、推定コスト、ローカルキャッシュ、ローカルJSON履歴保存を持ちます。現在の日次既定値は300で、成功した一括reviewを銘柄数に関係なく1回と数えます。
-- mock holdings は 7011 / 6758 / 9984 / 7974 / 4063 / 6857 / 3397 の7件、mock candidates は 6857 / 4063 の2件です。実DB保有銘柄がある場合は実DBを優先します。
+- mock holdings は 7011 / 6758 / 9984 / 7974 / 4063 / 6857 / 3397 の7件、mock candidates は 6857 / 4063 の2件です。通常経路では実入力・実DBを使い、これらの合成dataは明示デモへ限定します。
 - `target=mock` と mock fallback はOpenAI APIを呼ばず、課金なしのローカルサンプル応答を返します。
 
 ## 2026-05-23 portfolio AI review addendum

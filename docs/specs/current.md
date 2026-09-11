@@ -1,6 +1,6 @@
 # API Spec Current
 
-> 現在の正本: `api_spec_v2.4.md`
+> 現在の正本: `api_spec_v2.5.md`
 
 ## 概要
 
@@ -9,11 +9,17 @@
 
 ## 現在値
 
-- API仕様書: v2.4
-- 更新日: 2026-08-19
-- 変更概要: legacy stock-review保存履歴のfilterable metadata一覧、安全なdetail・Markdown export、保存失敗境界を追加
+- API仕様書: v2.5
+- 更新日: 2026-09-11
+- 変更概要: SC-2026-09-11-01 — live/mock分離、入力変更時失効、検索実績、系列別metadataと期限付きcache、Dashboard AIの2ペイン
 
 ## 主な変更点
+
+- 通常対象へ仮の保有・候補を補完せず、空対象はprovider・quota・usageを増やさないこと
+- 条件・保存成功時の回答失効とbusyを分離し、旧応答・旧finally・再取得失敗から旧結果を復活させないこと
+- Web設定とprovider実績の0回／実行／不明を分け、cache・履歴でも同じ意味を使うこと
+- 元データ系列別のsource/as_of/versionとprompt fingerprintをidentityへ接続し、最大300秒かつJST同日だけ自動再利用すること
+- Dashboard AIを条件／結果2ペインとし、利用量・保存・cache・promptは詳細設定へ整理すること
 
 - `/ui/dashboard/data` を中心にした UI view model 契約
 - `watchlist_collection` / `watchlist_membership`、default「メイン」の初回migration、Portfolio別storage、security-level共有memo / thesis

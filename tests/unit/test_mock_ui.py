@@ -288,7 +288,11 @@ def test_dashboard_unifies_portfolio_and_named_watchlists_in_one_management_spac
     assert "const invalidateStockAiReview = () => {" in html
     assert "state.stockAiRequestId += 1;" in html
     assert "if (requestId !== state.stockAiRequestId) return;" in html
-    assert 'if (requestId === state.stockAiRequestId) {\n            setPortfolioAiButtonsDisabled(false);' in html
+    # Button release follows the running request, even when its display generation
+    # was invalidated. The Node harness checks that release cannot revive a result.
+    assert 'if (state.stockAiBusyRequestId === requestId) {' in html
+    assert 'state.stockAiBusyRequestId = null;' in html
+    assert 'if (requestId === state.stockAiRequestId) {\n            renderPortfolioAiReview();' in html
     assert 'if (PAGE_MODE === "top" && requestedWatchlistId !== activeScopeId) return false;' in html
     assert 'await loadDashboard(state.data?.selected_ticker_code || null, activeWatchlistId())' in html
     assert "const syncWatchlistSelectionToAiTarget = () => {" in html

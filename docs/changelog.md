@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-09-11
+
+- Phase A1: 通常の空候補・保有・Watchlistへの暗黙mock補完を除去。ticker-only selectedをlocal master・実保有へ解決し、未保有は数量0・取得単価null、未知名称は「名称未登録（コード）」を保持。明示デモと合成対象は無課金経路へ隔離。
+- Phase A2: 分析条件変更と保有/list保存成功時に現在回答・reader・prompt・copyを失効。generation/busyとdata revisionを分離し、旧成功・失敗・finally・変更前refresh、保存成功後のreload失敗から旧結果が復活しないよう修正。高コスト確認cancel後のmode変更失効、manual selectedの実保有優先も検査。平均取得単価のAPI検証契約は変更しない。
+- Phase A3: 検索設定とprovider実績の実行／0回／不明を分離し、実効上限0を無効設定として扱う。cache・旧履歴・reader・Markdownの意味を揃え、modelの自己申告を実績根拠にしない。
+- Phase B: 純粋なcache helper、実prompt/schema fingerprint、系列別source metadataを追加。既存価格・technical・flow・newsのrecord基準日時を接続し、最大300秒未満・JST同日・server記録時刻による`legacy-review-v2`再利用へ変更。metadata不足は理由を表示し、旧cacheを安全なmissにする。保存成功に付随するcache保存とhit時の新規API/usage/writeなしを維持。
+- Phase C: Dashboard legacy AIを条件／結果の2ペインへ整理し、利用量・Web上限・mock・保存・cache・promptを詳細設定へ移動。送信時条件・生成日時と系列別基準日時を表示し、主要ID・4buttonとmode select・safe renderer・canonical画面を維持。
+- 検証: provider stub／一時DBの回帰、Nodeの遅延応答・状態snapshotテスト、合成HTTPだけを使うChromium画面QA入口を追加。Node・ブラウザQAをCIへ接続し、検証専用`browser` extra（`playwright>=1.58,<2.0`）・実行方法をtests/scripts READMEへ記録。production依存は変更しない。
+- 文書: 要件v2.2、API v2.5、画面v2.9を新規作成し、`SC-2026-09-11-01`、current pointers、UI原則、source/folder/call graph概要を同期。旧版・canonical prompt assetsは変更しない。
+
 ## 2026-08-19 legacy saved AI history / Markdown / PDF print
 
 - `GET /api/ai/stock-review/history`を追加し、legacy保存履歴を保存順の新しいものから、mode / target / status filter、limit / offset付きのmetadata-only一覧として返すようにした。filter前`mode_counts`、filter後pagination前`total`、保存総数、invalid件数を分離し、summaryはmodel本文ではなく決定的metadata文にした。

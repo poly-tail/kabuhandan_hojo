@@ -21,6 +21,7 @@ AiReviewHistoryTarget = Literal[
 AnalysisMode = Literal["daily", "swing", "weekly"]
 RiskPreference = Literal["conservative", "balanced", "aggressive"]
 WebSearchPolicy = Literal["optional", "required", "strongly_recommended", "manual_only"]
+WebSearchStatus = Literal["unknown", "not_run", "executed"]
 Judgement = Literal[
     "hold",
     "buy_more_candidate",
@@ -116,6 +117,16 @@ class PortfolioAiReviewRequest(BaseModel):
     position_intent: str | None = None
 
 
+class PortfolioSnapshotSource(BaseModel):
+    """Observed source/date/version of a record actually used in a snapshot."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    source: str | None = None
+    as_of: str | None = None
+    version: str | None = None
+
+
 class PortfolioMarketSnapshot(BaseModel):
     """Market data snapshot that can be backed by real price APIs later."""
 
@@ -139,6 +150,7 @@ class PortfolioMarketSnapshot(BaseModel):
     credit_ratio: float | None = None
     earnings_date: str | None = None
     recent_news: list[str] = Field(default_factory=list)
+    source_metadata: dict[str, list[PortfolioSnapshotSource]] = Field(default_factory=dict)
 
 
 class PortfolioAiReviewSource(BaseModel):
@@ -160,6 +172,8 @@ class PortfolioAiUsage(BaseModel):
     output_tokens: int | None = None
     reasoning_tokens: int | None = None
     web_search_calls: int = 0
+    # None preserves compatibility with adapters reporting an explicit count.
+    web_search_calls_known: bool | None = None
     api_calls: int = 0
 
 
@@ -373,6 +387,8 @@ class PortfolioAiReviewResponse(BaseModel):
     error: PortfolioAiReviewError | None = None
     holdings_source: HoldingsSource = "none"
     web_search_used: bool = False
+    web_search_status: WebSearchStatus = "unknown"
+    web_search_requested: bool | None = None
     mock_response: bool = False
     cache_hit: bool = False
     holdings_snapshot: list[PortfolioAiHolding] = Field(default_factory=list)
@@ -403,6 +419,9 @@ class PortfolioAiReviewHistoryItem(BaseModel):
     watchlist_id: int | None = Field(default=None, ge=1)
     include_web_search: bool = False
     web_search_used: bool = False
+    web_search_status: WebSearchStatus = "unknown"
+    web_search_requested: bool | None = None
+    web_search_calls: int | None = None
     mock_response: bool = False
     cache_hit: bool = False
     estimated_cost_usd: float = Field(default=0, ge=0, allow_inf_nan=False)
