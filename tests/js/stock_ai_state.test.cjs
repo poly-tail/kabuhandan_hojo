@@ -366,6 +366,22 @@ test('raw failure renderer and its reader source retain search evidence', () => 
   assert.equal(h.element('portfolio-ai-review-reader-link').hidden, false);
 });
 
+test('legacy absent search status never renders an observed count from unverified fields', () => {
+  const ctx = vm.createContext({
+    uniqueAiItems: (items) => items, escapeHtml: String,
+    aiHoldingsSourceLabel: () => '', aiModeLabel: () => '', formatDateTime: () => '',
+    renderAiParagraph: () => '', renderAiDataBasis: () => '', renderAiTextSection: () => '',
+    renderAiListSection: () => '', renderAiSources: () => '',
+  });
+  vm.runInContext([
+    declaration('aiWebSearchEvidenceLabel'), declaration('aiWebSearchSettingLabel'),
+    declaration('renderAiReviewSummary'),
+  ].join('\n'), ctx);
+  const rendered = vm.runInContext("renderAiReviewSummary({web_search_used: true, actual_usage: {web_search_calls: 2}})", ctx);
+  assert.match(rendered, /実績は未確認/);
+  assert.doesNotMatch(rendered, /Web検索 2回/);
+});
+
 test('canceling a mode-button confirmation cannot retain an answer under the changed mode', async () => {
   const h = harness();
   h.queues.post.push(successfulReview);

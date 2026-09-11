@@ -79,3 +79,12 @@ test('support/resistance count as price input and missing metadata is not report
   assert.match(output, /価格: 基準日時未取得・由来未確認/);
   assert.match(output, /テクニカル: 未入力／未取得/);
 });
+
+test('unknown names already containing the public code do not duplicate it in data basis', () => {
+  const output = ctx.ui.renderAiDataBasis({
+    holdings_snapshot: [{ ticker: '9999', name: '名称未登録（9999）' }],
+    market_snapshot: [{ ticker: '9999', price: 10 }],
+  });
+  assert.match(output, /名称未登録（9999）/);
+  assert.doesNotMatch(output, /名称未登録（9999）（9999）/);
+});

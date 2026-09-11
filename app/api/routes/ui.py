@@ -2073,7 +2073,8 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
         const items = snapshots.map((snapshot) => {
           const ticker = publicSecurityCode(snapshot.ticker);
           const name = names.get(snapshot.ticker);
-          const label = name ? `${name}（${ticker}）` : `名称未登録（${ticker}）`;
+          const unknownLabel = `名称未登録（${ticker}）`;
+          const label = name && name !== unknownLabel ? `${name}（${ticker}）` : unknownLabel;
           const dates = series.map(([key, title, fields]) => {
             const present = fields.some((field) => {
               const value = snapshot[field];
@@ -2120,7 +2121,7 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
           data.reasoning_effort ? `reasoning ${data.reasoning_effort}` : "",
           data.web_search_policy ? `web policy ${data.web_search_policy}` : "",
           data.estimated_cost_usd != null ? `${data.cache_hit ? "前回生成時の" : "今回の"}事前概算 $${Number(data.estimated_cost_usd || 0).toFixed(4)}` : "",
-          data.web_search_status !== "unknown" && data.actual_usage?.web_search_calls
+          data.web_search_status === "executed" && data.actual_usage?.web_search_calls
             ? `${data.cache_hit ? "前回生成時の" : ""}Web検索 ${data.actual_usage.web_search_calls}回${data.actual_usage.web_search_calls_known === false ? "以上（総数未確認）" : ""}`
             : "",
           data.cache_hit ? "今回の新規検索0回・API呼出0回・追加利用量なし" : "",
