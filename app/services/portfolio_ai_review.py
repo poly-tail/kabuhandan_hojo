@@ -586,7 +586,11 @@ class PortfolioAiReviewService:
         if not holdings and not candidates:
             return self._error_response(
                 status="no_holdings",
-                message="AI分析対象の銘柄がありません。",
+                message=(
+                    "狙い中銘柄が未登録／指定されていません。"
+                    if options.target == "candidates"
+                    else "AI分析対象の銘柄がありません。"
+                ),
                 options=options,
                 holdings=holdings,
                 candidates=candidates,
@@ -1099,7 +1103,10 @@ class PortfolioAiReviewService:
         if payload.holdings:
             return self._filter_tickers(payload.holdings, payload.tickers), "request"
         if payload.target == "candidates":
-            return [], "candidates"
+            source: HoldingsSource = (
+                "mock" if payload.use_mock_holdings and not payload.candidates else "candidates"
+            )
+            return [], source
         if payload.use_mock_holdings or payload.target == "mock":
             return self._filter_tickers(self.get_mock_holdings(), payload.tickers), "mock"
         if payload.target == "watchlist":
@@ -1108,10 +1115,9 @@ class PortfolioAiReviewService:
             except WatchlistCollectionNotFoundError:
                 return [], "watchlist"
             if watchlist:
-                return self._filter_tickers(watchlist, payload.tickers), "watchlist"
-            if payload.watchlist_id is not None:
-                return [], "watchlist"
-            return self._filter_tickers(self.get_mock_holdings(), payload.tickers), "mock"
+                source = "mock" if get_settings().app_use_mock else "watchlist"
+                return self._filter_tickers(watchlist, payload.tickers), source
+            return [], "watchlist"
         if payload.target == "selected":
             selected = self._resolve_selected_tickers(payload.tickers, session=session)
             return selected, "request" if selected else "none"
@@ -1119,7 +1125,7 @@ class PortfolioAiReviewService:
         db_holdings = self.get_holdings(session)
         if db_holdings:
             return self._filter_tickers(db_holdings, payload.tickers), "database"
-        return self._filter_tickers(self.get_mock_holdings(), payload.tickers), "mock"
+        return [], "none"
 
     def _resolve_candidates(
         self,
@@ -1129,12 +1135,10 @@ class PortfolioAiReviewService:
     ) -> list[PortfolioAiCandidate]:
         if payload.candidates:
             return self._filter_candidate_tickers(payload.candidates, payload.tickers)
-        if payload.target in {"candidates", "mock"}:
+        if payload.target == "mock" or (
+            payload.target == "candidates" and payload.use_mock_holdings
+        ):
             return self._filter_candidate_tickers(self.get_mock_candidates(), payload.tickers)
-        if payload.target == "selected":
-            candidate_lookup = {candidate.ticker: candidate for candidate in self.get_mock_candidates()}
-            selected = [candidate_lookup[ticker] for ticker in payload.tickers if ticker in candidate_lookup]
-            return self._filter_candidate_tickers(selected, payload.tickers)
         return []
 
     def _hydrate_holding_identities(
@@ -1229,27 +1233,35 @@ class PortfolioAiReviewService:
         return tuple(aliases)
 
     def _resolve_selected_tickers(self, tickers: list[str], *, session: Session | None) -> list[PortfolioAiHolding]:
+        """Use actual positions and master identities; selection never implies ownership."""
+
         if not tickers:
             return []
-        known: dict[str, PortfolioAiHolding] = {}
-        for holding in [*self.get_holdings(session), *self.get_watchlist(session), *self.get_mock_holdings()]:
-            known.setdefault(holding.ticker, holding)
-        for candidate in self.get_mock_candidates():
-            known.setdefault(
-                candidate.ticker,
+        actual_holdings = {
+            holding.ticker: holding for holding in self.get_holdings(session)
+        }
+        selected: list[PortfolioAiHolding] = []
+        for ticker in tickers:
+            normalized = ticker.strip().upper()
+            security = self._find_security_master(session, normalized) if session is not None else None
+            canonical_ticker = security.ticker_code if security is not None else normalized
+            holding = actual_holdings.get(canonical_ticker)
+            if holding is not None:
+                selected.append(holding)
+                continue
+            selected.append(
                 PortfolioAiHolding(
-                    ticker=candidate.ticker,
-                    name=candidate.name,
-                    market=candidate.market,
+                    ticker=canonical_ticker,
+                    name=(
+                        security.name if security is not None
+                        else f"名称未登録（{self._public_security_code(canonical_ticker)}）"
+                    ),
+                    market=security.market if security is not None else None,
                     quantity=0,
                     average_price=None,
-                ),
+                )
             )
-        return [
-            known.get(ticker)
-            or PortfolioAiHolding(ticker=ticker, name=ticker, market="TSE", quantity=0, average_price=None)
-            for ticker in tickers
-        ]
+        return selected
 
     def _filter_tickers(self, holdings: list[PortfolioAiHolding], tickers: list[str]) -> list[PortfolioAiHolding]:
         if not tickers:
@@ -1719,7 +1731,14 @@ class PortfolioAiReviewService:
             ticker = item.ticker.strip().upper()
             name = item.name.strip()
             aliases = self._security_code_aliases(ticker)
-            trusted_name = None if not name or name.upper() in aliases else name
+            unknown_labels = {
+                "名称未登録",
+                f"名称未登録（{self._public_security_code(ticker)}）",
+            }
+            trusted_name = (
+                None if not name or name.upper() in aliases or name in unknown_labels
+                else name
+            )
             identity = (ticker, trusted_name)
             for alias in aliases:
                 existing = identities.get(alias)
@@ -2319,6 +2338,8 @@ class PortfolioAiReviewService:
         normalized_name = " ".join(str(name).split())
         normalized_ticker = str(ticker).strip()
         public_ticker = cls._public_security_code(normalized_ticker)
+        if normalized_name == f"名称未登録（{public_ticker}）":
+            return normalized_name
         if not normalized_name or normalized_name in {normalized_ticker, public_ticker}:
             return public_ticker
         return f"{normalized_name}（{public_ticker}）"
