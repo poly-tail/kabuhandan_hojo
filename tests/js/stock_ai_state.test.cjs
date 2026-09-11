@@ -78,6 +78,7 @@ function harness() {
     'state', 'AI_REVIEW_READER_CONFIG', 'aiReviewReaderObjectUrls', 'publicSecurityCode',
     'watchlistSpaceKey', 'activeWatchlistId', 'activeWatchlistCollection', 'activeWatchlistSelection',
     'clearAiReviewReader', 'setPortfolioAiButtonsDisabled', 'parseTickerInput',
+    'aiWebSearchEvidenceLabel', 'aiWebSearchSettingLabel',
     'selectedWatchlistItems', 'selectedStockAiHoldings', 'estimateStockAiCost', 'updateStockAiCost',
     'syncStockAiPrompt', 'buildStockAiRequest', 'stockAiReviewContext', 'isHighCostStockAiRequest',
     'renderPortfolioAiReview', 'runPortfolioAiReview', 'invalidateStockAiReview',

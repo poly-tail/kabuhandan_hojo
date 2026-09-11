@@ -897,7 +897,8 @@ class PortfolioAiReviewService:
         response.mode = options.mode
         response.analysis_mode = options.analysis_mode
         response.holdings_source = holdings_source
-        response.web_search_used = include_web_search
+        for field, value in self._web_search_evidence(options, usage=usage).items():
+            setattr(response, field, value)
         response.include_web_search = include_web_search
         response.web_search_policy = prompt_bundle["web_search_policy"]
         response.mock_response = False
@@ -1450,7 +1451,7 @@ class PortfolioAiReviewService:
             include_web_search=False,
             web_search_policy="manual_only",
             estimated_cost_usd=estimated_cost_usd,
-            actual_usage=PortfolioAiUsage(),
+            actual_usage=PortfolioAiUsage(web_search_calls=0, web_search_calls_known=True),
             portfolio_summary=PortfolioAiSummary(
                 overall_view="OpenAI APIを呼ばず、ChatGPTへ手動投入するためのプロンプトを生成しました。",
                 portfolio_summary="生成したプロンプトをコピーして、ChatGPTへ手動で貼り付けてください。自動投稿や回答取得は行いません。",
@@ -1463,7 +1464,7 @@ class PortfolioAiReviewService:
             manual_prompt=manual_prompt,
             status="success",
             holdings_source=holdings_source,
-            web_search_used=False,
+            **self._web_search_evidence(options, no_api=True),
             mock_response=False,
             holdings_snapshot=holdings,
             candidates_snapshot=candidates,
@@ -1660,7 +1661,7 @@ class PortfolioAiReviewService:
             include_web_search=include_web_search,
             web_search_policy=get_mode_profile(options.mode).web_search_policy,
             estimated_cost_usd=estimated_cost_usd,
-            actual_usage=PortfolioAiUsage(web_search_calls=0),
+            actual_usage=PortfolioAiUsage(web_search_calls=0, web_search_calls_known=True),
             input_summary={
                 "target": options.target,
                 "holdings": len(holdings),
@@ -1708,7 +1709,7 @@ class PortfolioAiReviewService:
             warnings=warnings,
             status="success",
             holdings_source=holdings_source,
-            web_search_used=False,
+            **self._web_search_evidence(options, no_api=True),
             mock_response=True,
             holdings_snapshot=holdings,
             candidates_snapshot=candidates,
@@ -1900,7 +1901,7 @@ class PortfolioAiReviewService:
             status="json_parse_failed",
             error=PortfolioAiReviewError(code="json_parse_failed", message=failure_summary),
             holdings_source=holdings_source,
-            web_search_used=include_web_search,
+            **self._web_search_evidence(options, usage=usage),
             mock_response=False,
             holdings_snapshot=holdings,
             candidates_snapshot=candidates,
@@ -1963,7 +1964,11 @@ class PortfolioAiReviewService:
             status=status,  # type: ignore[arg-type]
             error=PortfolioAiReviewError(code=status, message=message),  # type: ignore[arg-type]
             holdings_source=holdings_source,
-            web_search_used=include_web_search,
+            **self._web_search_evidence(
+                options,
+                usage=usage,
+                no_api=status not in {"openai_api_error", "json_parse_failed"},
+            ),
             mock_response=options.mock_response,
             holdings_snapshot=holdings,
             candidates_snapshot=candidates or [],
@@ -2159,10 +2164,52 @@ class PortfolioAiReviewService:
         if not get_settings().openai_enable_web_search:
             warnings.append("OPENAI_ENABLE_WEB_SEARCH=false のため、Web検索は実行しません。")
             return False, warnings
-        if options.max_web_search_calls <= 0:
-            warnings.append("max_web_search_calls=0 のため、Web検索は実行しません。")
+        if self._resolve_max_web_search_calls(options) <= 0:
+            warnings.append("実効 max_web_search_calls=0 のため、Web検索は実行しません。")
             return False, warnings
         return True, warnings
+
+    @staticmethod
+    def _web_search_count_known(usage: PortfolioAiUsage) -> bool:
+        if usage.web_search_calls_known is not None:
+            return usage.web_search_calls_known
+        return "web_search_calls" in usage.model_fields_set
+
+    def _web_search_evidence(
+        self,
+        options: PortfolioAiReviewRequest,
+        *,
+        usage: PortfolioAiUsage | None = None,
+        no_api: bool = False,
+    ) -> dict[str, Any]:
+        """Set server-owned evidence; model sources and claims are never evidence."""
+        requested = (
+            get_mode_profile(options.mode).default_include_web_search
+            if options.include_web_search is None
+            else options.include_web_search
+        )
+        if no_api:
+            status = "not_run"
+        elif usage is not None and usage.web_search_calls > 0:
+            status = "executed"
+        elif usage is not None and self._web_search_count_known(usage):
+            status = "not_run"
+        else:
+            status = "unknown"
+        return {
+            "web_search_requested": requested,
+            "web_search_status": status,
+            "web_search_used": status == "executed",
+        }
+
+    @staticmethod
+    def _web_search_evidence_label(review: PortfolioAiReviewResponse) -> str:
+        prefix = "前回生成時の" if review.cache_hit else ""
+        if review.web_search_status == "executed":
+            return f"{prefix}Web検索を実行（主張の裏付けは別確認）"
+        if review.web_search_status == "not_run":
+            return f"{prefix}Web検索は未実行（最新のWeb裏取りなし）"
+        return f"{prefix}Web検索実績は未確認（最新のWeb裏取り未確認）"
 
     def _resolve_max_web_search_calls(self, options: PortfolioAiReviewRequest) -> int:
         settings = get_settings()
@@ -2210,6 +2257,11 @@ class PortfolioAiReviewService:
             try:
                 review = PortfolioAiReviewResponse.model_validate(raw_entry)
                 history_id = self._history_id(raw_entry)
+                if "web_search_status" not in raw_entry:
+                    # Legacy used=True meant permission, not tool evidence.
+                    # Project conservatively without rewriting the stored record/id.
+                    review.web_search_status = "unknown"
+                    review.web_search_used = False
                 review = self._enrich_response_security_references(
                     review,
                     holdings=review.holdings_snapshot,
@@ -2280,6 +2332,14 @@ class PortfolioAiReviewService:
             watchlist_id=watchlist_id,
             include_web_search=review.include_web_search,
             web_search_used=review.web_search_used,
+            web_search_status=review.web_search_status,
+            web_search_requested=review.web_search_requested,
+            web_search_calls=(
+                review.actual_usage.web_search_calls
+                if review.web_search_status != "unknown"
+                and self._web_search_count_known(review.actual_usage)
+                else None
+            ),
             mock_response=review.mock_response,
             cache_hit=review.cache_hit,
             estimated_cost_usd=max(review.estimated_cost_usd, 0),
@@ -2358,10 +2418,20 @@ class PortfolioAiReviewService:
             f"- 状態: {self._markdown_inline(status_label)} (`{review.status}`)",
             f"- モデル: {self._markdown_inline(review.model or '未記録')}",
             f"- reasoning: {self._markdown_inline(review.reasoning_effort or '未記録')}",
-            f"- Web検索: {'使用済み' if review.web_search_used else ('有効' if review.include_web_search else 'なし')}",
+            "- Web検索要求: " + (
+                "未記録" if review.web_search_requested is None
+                else "ON" if review.web_search_requested else "OFF"
+            ),
+            f"- Web検索実効設定: {'ON' if review.include_web_search else 'OFF'}",
+            f"- Web検索実績: {self._web_search_evidence_label(review)}",
+            "- 検索の実行有無は、回答の各主張の裏付け成立を保証しません。",
             f"- 実行前概算: ${review.estimated_cost_usd:.4f}",
             "",
         ]
+        if review.web_search_status != "unknown" and self._web_search_count_known(review.actual_usage):
+            lines.extend([f"- 生成時の検索回数: {review.actual_usage.web_search_calls}回", ""])
+        if review.cache_hit:
+            lines.extend(["- 今回の新規検索: 0回（API呼出・追加利用量なし）", ""])
 
         def add_text(title: str, value: Any, *, level: int = 3) -> None:
             if not str(value or "").strip():
@@ -2762,13 +2832,20 @@ class PortfolioAiReviewService:
         output_items = getattr(response, "output", None)
         web_search_calls = 0
         if isinstance(output_items, list):
-            web_search_calls = sum(1 for item in output_items if getattr(item, "type", None) == "web_search_call")
+            web_search_calls = sum(
+                1 for item in output_items
+                if (item.get("type") if isinstance(item, dict) else getattr(item, "type", None))
+                == "web_search_call"
+            )
         return PortfolioAiUsage(
             input_tokens=input_tokens,
             cached_input_tokens=cached_input_tokens,
             output_tokens=output_tokens,
             reasoning_tokens=reasoning_tokens,
             web_search_calls=web_search_calls,
+            web_search_calls_known=(
+                isinstance(output_items, list) or not include_web_search or max_web_search_calls <= 0
+            ),
             api_calls=1,
         )
 
@@ -2779,6 +2856,9 @@ class PortfolioAiReviewService:
             output_tokens=self._sum_optional_int(primary.output_tokens, secondary.output_tokens),
             reasoning_tokens=self._sum_optional_int(primary.reasoning_tokens, secondary.reasoning_tokens),
             web_search_calls=primary.web_search_calls + secondary.web_search_calls,
+            web_search_calls_known=(
+                self._web_search_count_known(primary) and self._web_search_count_known(secondary)
+            ),
             api_calls=primary.api_calls + secondary.api_calls,
         )
 

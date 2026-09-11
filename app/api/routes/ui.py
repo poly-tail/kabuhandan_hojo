@@ -2020,6 +2020,25 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
         return `<section class="ai-result-section"><h4>参照情報</h4><div class="source-links">${links}</div></section>`;
       };
 
+      const aiWebSearchEvidenceLabel = (data) => {
+        const prefix = data?.cache_hit ? "前回生成時の" : "";
+        if (data?.web_search_status === "executed") {
+          return `${prefix}Web検索を実行（主張の裏付けは別確認）`;
+        }
+        if (data?.web_search_status === "not_run") {
+          return `${prefix}Web検索は未実行（最新のWeb裏取りなし）`;
+        }
+        return `${prefix}Web検索実績は未確認（最新のWeb裏取り未確認）`;
+      };
+
+      const aiWebSearchSettingLabel = (data) => {
+        const effective = data?.include_web_search ? "ON" : "OFF";
+        const requested = data?.web_search_requested;
+        return typeof requested === "boolean"
+          ? `Web検索要求${requested ? "ON" : "OFF"}・実効設定${effective}`
+          : `Web検索設定${effective}（元の要求は未記録）`;
+      };
+
       const renderAiReviewSummary = (data, contextLabel = "") => {
         const summary = data.portfolio_summary || {};
         const overallView = String(summary.overall_view || "").trim();
@@ -2034,15 +2053,19 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
           ? ""
           : summary.market_temperature;
         const chips = [
-          data.web_search_used ? "Web検索あり" : "Web検索なしの簡易分析",
+          aiWebSearchEvidenceLabel(data),
+          aiWebSearchSettingLabel(data),
           data.mode === "prompt_only"
             ? "OpenAI API非呼び出し"
             : (data.mock_response ? "API非呼び出しmock" : "OpenAI API"),
           data.model ? `model ${data.model}` : "",
           data.reasoning_effort ? `reasoning ${data.reasoning_effort}` : "",
           data.web_search_policy ? `web policy ${data.web_search_policy}` : "",
-          data.estimated_cost_usd != null ? `今回の事前概算 $${Number(data.estimated_cost_usd || 0).toFixed(4)}` : "",
-          data.actual_usage?.web_search_calls ? `Web検索 ${data.actual_usage.web_search_calls}回` : "",
+          data.estimated_cost_usd != null ? `${data.cache_hit ? "前回生成時の" : "今回の"}事前概算 $${Number(data.estimated_cost_usd || 0).toFixed(4)}` : "",
+          data.web_search_status !== "unknown" && data.actual_usage?.web_search_calls
+            ? `${data.cache_hit ? "前回生成時の" : ""}Web検索 ${data.actual_usage.web_search_calls}回${data.actual_usage.web_search_calls_known === false ? "以上（総数未確認）" : ""}`
+            : "",
+          data.cache_hit ? "今回の新規検索0回・API呼出0回・追加利用量なし" : "",
           data.cache_hit ? "前回結果" : "",
           aiHoldingsSourceLabel(data.holdings_source),
           contextLabel,
@@ -2337,7 +2360,8 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
               <span class="chip">${escapeHtml(stockPreview)}</span>
               ${item?.analysis_mode ? `<span class="chip">期間 ${escapeHtml(item.analysis_mode)}</span>` : ""}
               ${item?.model ? `<span class="chip">model ${escapeHtml(item.model)}</span>` : ""}
-              <span class="chip">${item?.include_web_search ? "Web検索設定あり" : "Web検索なし"}</span>
+              <span class="chip">${escapeHtml(aiWebSearchSettingLabel(item))}</span>
+              <span class="chip">${escapeHtml(aiWebSearchEvidenceLabel(item))}</span>
               ${item?.mock_response ? '<span class="chip warn">API非呼び出しmock</span>' : ""}
               ${item?.cache_hit ? '<span class="chip">キャッシュ結果</span>' : ""}
               ${watchlistLabel}
@@ -2473,6 +2497,7 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
                 <span class="chip warn">${escapeHtml(aiHoldingsSourceLabel(data.holdings_source))}</span>
               </div>
               ${renderAiParagraph(data.error?.message || data.portfolio_summary?.overall_view || "分析できませんでした。")}
+              <div class="chips"><span class="chip">${escapeHtml(aiWebSearchSettingLabel(data))}</span><span class="chip">${escapeHtml(aiWebSearchEvidenceLabel(data))}</span></div>
               ${renderAiRawFallback(data.raw_model_output)}
             </article>
           `);
@@ -2889,6 +2914,7 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
                 ${review.contextLabel ? `<span class="chip">${escapeHtml(review.contextLabel)}</span>` : ""}
               </div>
               ${renderAiParagraph(data.error?.message || data.portfolio_summary?.overall_view || "分析できませんでした。")}
+              <div class="chips"><span class="chip">${escapeHtml(aiWebSearchSettingLabel(data))}</span><span class="chip">${escapeHtml(aiWebSearchEvidenceLabel(data))}</span></div>
               ${rawOutput}
             </article>
           `);
@@ -3099,6 +3125,7 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
                 <span class="chip warn">${escapeHtml(aiHoldingsSourceLabel(data.holdings_source))}</span>
               </div>
               ${renderAiParagraph(data.error?.message || data.portfolio_summary?.overall_view || "分析できませんでした。")}
+              <div class="chips"><span class="chip">${escapeHtml(aiWebSearchSettingLabel(data))}</span><span class="chip">${escapeHtml(aiWebSearchEvidenceLabel(data))}</span></div>
               ${rawOutput}
             </article>
           `);
