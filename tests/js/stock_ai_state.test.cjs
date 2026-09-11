@@ -123,7 +123,8 @@ function harness() {
     assert.equal(element('stock-ai-copy-prompt').disabled, true);
     assert.equal(element('portfolio-ai-review-reader-link').hidden, true);
   };
-  return { ui, element, buttons, calls, queues, change, assertCleared, revoked };
+  return { ui, element, buttons, calls, queues, change, assertCleared, revoked,
+    setConfirmation: (value) => { ctx.window.confirm = () => value; } };
 }
 
 for (const completion of ['success', 'failure']) {
@@ -259,8 +260,10 @@ test('live empty-target estimates do not invent portfolio or candidate counts', 
   const h = harness();
   h.ui.state.data.portfolio_items = [];
   assert.equal(h.ui.estimateStockAiCost().count, 0);
+  assert.equal(h.ui.estimateStockAiCost().estimate, 0);
   h.change('stock-ai-target', 'candidates');
   assert.equal(h.ui.estimateStockAiCost().count, 0);
+  assert.equal(h.ui.estimateStockAiCost().estimate, 0);
   h.change('portfolio-ai-mock-response', true);
   assert.equal(h.ui.estimateStockAiCost().estimate, 0);
 });
@@ -361,4 +364,30 @@ test('raw failure renderer and its reader source retain search evidence', () => 
   assert.match(rendered, /最新のWeb裏取りなし/);
   assert.match(rendered, /stub raw response/);
   assert.equal(h.element('portfolio-ai-review-reader-link').hidden, false);
+});
+
+test('canceling a mode-button confirmation cannot retain an answer under the changed mode', async () => {
+  const h = harness();
+  h.queues.post.push(successfulReview);
+  await h.ui.runPortfolioAiReview();
+  const callsBefore = h.calls.length;
+  h.setConfirmation(false);
+  await h.ui.runPortfolioAiReview('critical');
+  assert.equal(h.calls.length, callsBefore);
+  assert.equal(h.element('stock-ai-mode').value, 'critical');
+  h.assertCleared();
+  assert.ok(h.buttons.every((button) => !button.disabled));
+});
+
+test('manual selected ticker retains actual holding values when also on a watchlist', () => {
+  const h = harness();
+  h.ui.state.data.watchlist_items.push({ ticker_code: '7011', name: '三菱重工業' });
+  h.change('stock-ai-target', 'selected');
+  h.change('stock-ai-tickers', '7011');
+  let holding = h.ui.buildStockAiRequest().holdings[0];
+  assert.equal(holding.quantity, 5);
+  assert.equal(holding.average_price, 2000);
+  h.ui.state.data.portfolio_items[0].average_cost = 0;
+  holding = h.ui.buildStockAiRequest().holdings[0];
+  assert.equal(holding.average_price, 0);
 });

@@ -2714,8 +2714,8 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
           average_price: null,
         }));
         const known = new Map([
-          ...(state.data?.portfolio_items || []).map((item) => [item.ticker_code, item]),
           ...(state.data?.watchlist_items || []).map((item) => [item.ticker_code, item]),
+          ...(state.data?.portfolio_items || []).map((item) => [item.ticker_code, item]),
         ]);
         const manual = parseTickerInput().map((ticker) => {
           const item = known.get(ticker);
@@ -2724,7 +2724,7 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
             name: item?.name || ticker,
             market: item?.market || "TSE",
             quantity: state.data?.mode === "mock" ? 0 : Number(item?.quantity || 0),
-            average_price: state.data?.mode === "mock" ? null : (item?.average_cost ? Number(item.average_cost) : null),
+            average_price: state.data?.mode === "mock" || item?.average_cost == null ? null : Number(item.average_cost),
           };
         });
         const merged = new Map();
@@ -2745,7 +2745,7 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
           mock: 9,
         };
         const count = counts[target] ?? 0;
-        if (target === "mock" || document.getElementById("portfolio-ai-mock-response")?.checked) {
+        if (count === 0 || target === "mock" || document.getElementById("portfolio-ai-mock-response")?.checked) {
           return { count, estimate: 0 };
         }
         const base = { scanner: 0.006, analyst: 0.02, judge: 0.045, critical: 0.075, prompt_only: 0 }[mode] ?? 0.02;
@@ -3002,6 +3002,9 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
           return;
         }
         const payloadBody = buildStockAiRequest(modeOverride);
+        if (state.stockAiInputIdentity !== stockAiInputIdentity()) {
+          invalidateStockAiReview();
+        }
         const reviewContext = {
           ...stockAiReviewContext(payloadBody),
           requestSnapshot: JSON.parse(JSON.stringify(payloadBody)),
