@@ -88,3 +88,17 @@ test('unknown names already containing the public code do not duplicate it in da
   assert.match(output, /名称未登録（9999）/);
   assert.doesNotMatch(output, /名称未登録（9999）（9999）/);
 });
+
+test('many price source records show a compact date span with full details retained', () => {
+  const records = Array.from({ length: 25 }, (_, index) => ({
+    source: 'jquants', as_of: `2026-08-${String(index + 1).padStart(2, '0')}`, version: `row-${index}`,
+  }));
+  const output = ctx.ui.renderAiDataBasis({ market_snapshot: [{
+    ticker: '7011', price: 100, source_metadata: { price: records },
+  }] });
+  const beforeDetails = output.split('<details class="ai-source-details">')[0];
+  assert.match(beforeDetails, /2026-08-01 ～ 2026-08-25 \/ jquants（25件）/);
+  assert.doesNotMatch(beforeDetails, /更新版|2026-08-12/);
+  assert.match(output, /出典・基準日時の詳細/);
+  assert.match(output, /2026-08-12 \/ jquants \/ 更新版 row-11/);
+});

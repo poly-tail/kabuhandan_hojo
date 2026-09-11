@@ -407,3 +407,18 @@ test('manual selected ticker retains actual holding values when also on a watchl
   holding = h.ui.buildStockAiRequest().holdings[0];
   assert.equal(holding.average_price, 0);
 });
+
+test('prompt generation reveals its details once; invalidation hides the empty output and disables copy', async () => {
+  const h = harness();
+  h.element('stock-ai-details').open = false;
+  h.queues.post.push({ ...successfulReview, mode: 'prompt_only' });
+  await h.ui.runPortfolioAiReview('prompt_only');
+  assert.equal(h.element('stock-ai-details').open, true);
+  assert.equal(h.element('stock-ai-prompt-output').hidden, false);
+  h.element('stock-ai-details').open = false;
+  h.ui.renderPortfolioAiReview();
+  assert.equal(h.element('stock-ai-details').open, false);
+  h.change('stock-ai-user-hypothesis', '入力変更');
+  assert.equal(h.element('stock-ai-prompt-output').hidden, true);
+  h.assertCleared();
+});

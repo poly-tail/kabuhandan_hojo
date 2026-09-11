@@ -980,6 +980,89 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
         .management-space-controls, .management-space-controls .section-actions { width: 100%; }
         .management-space-select-label { width: 100%; min-width: 0; }
       }
+
+      /* Dashboard theme and AI workbench; detail and chart keep their theme. */
+      .page-top {
+        --bg: #f4f6f9;
+        --panel: #ffffff;
+        --panel-strong: #ffffff;
+        --ink: #17263d;
+        --muted: #536277;
+        --line: #dce3eb;
+        --accent: #245dc5;
+        --accent-soft: #edf3ff;
+        --shadow: 0 3px 14px rgba(23, 38, 61, 0.06);
+        --radius: 14px;
+        background: var(--bg);
+      }
+
+      .page-top::before, .page-top .hero-card::after { display: none; }
+      .page-top .panel { backdrop-filter: none; }
+
+      .page-top .stock-ai-workbench {
+        display: grid;
+        grid-template-columns: 400px minmax(0, 1fr);
+        gap: 20px;
+        align-items: start;
+        min-width: 0;
+        margin: 14px 0;
+      }
+
+      .page-top .stock-ai-workbench :is(.stock-ai-control-pane, .stock-ai-result-pane) {
+        display: grid;
+        gap: 18px;
+        min-width: 0;
+        padding: 20px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: #ffffff;
+        box-shadow: var(--shadow);
+        overflow-wrap: anywhere;
+      }
+
+      .page-top .stock-ai-workbench :is(h3, h4, p) { margin: 0; }
+      .page-top .stock-ai-workbench h3 { font-size: 18px; line-height: 1.5; }
+      .page-top .stock-ai-workbench .stock-ai-field { display: grid; gap: 7px; min-width: 0; }
+      .page-top .stock-ai-workbench .stock-ai-field > span { font-size: 13px; font-weight: 700; }
+      .page-top .stock-ai-workbench :is(.ai-review-control-grid, .stock-ai-usage-grid) { grid-template-columns: minmax(0, 1fr); }
+      .page-top .stock-ai-workbench .ai-review-control-grid { gap: 16px; }
+      .page-top .stock-ai-workbench :is(.input, .textarea) { width: 100%; min-width: 0; max-width: 100%; border-radius: 7px; }
+      .page-top .stock-ai-workbench :is(.ai-review-actions, .stock-ai-mode-actions) { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+      .page-top .stock-ai-workbench :is(button, .action-link, .chip, pre) { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
+      .page-top .stock-ai-workbench :is(button, .action-link) { border-radius: 7px; white-space: normal; line-height: 1.5; }
+      .page-top .stock-ai-workbench .primary-button { background: #245dc5; border-color: #245dc5; color: #ffffff; }
+      .page-top .stock-ai-workbench .primary-button:hover { background: #194ba6; }
+      .page-top .stock-ai-workbench :is(button, a, input, select, textarea, summary):focus-visible { outline: 3px solid #245dc5; outline-offset: 3px; }
+      .page-top .stock-ai-workbench .checkbox-row { display: grid; gap: 12px; }
+      .page-top .stock-ai-workbench .checkbox-row label { align-items: start; line-height: 1.6; }
+      .page-top .stock-ai-workbench .checkbox-row input { flex: 0 0 auto; margin-top: 4px; }
+      .page-top .stock-ai-workbench .score-chip { width: fit-content; font-size: 12px; border-radius: 6px; }
+      .page-top .stock-ai-workbench .stock-ai-details { border-top: 1px solid var(--line); padding-top: 16px; min-width: 0; }
+      .page-top .stock-ai-workbench .stock-ai-details > summary { cursor: pointer; font-size: 14px; font-weight: 700; line-height: 1.6; }
+      .page-top .stock-ai-workbench .stock-ai-details-content { display: grid; gap: 18px; min-width: 0; padding-top: 18px; }
+      .page-top .stock-ai-workbench .stock-ai-usage-panel { background: #f5f7fa; border-radius: 8px; min-width: 0; }
+      .page-top .stock-ai-workbench .stock-ai-details .ai-review-actions { grid-template-columns: minmax(0, 1fr); }
+      .page-top .stock-ai-workbench .prompt-output { min-height: 150px; }
+      .page-top .stock-ai-workbench .prompt-output[hidden] { display: none; }
+      .page-top .stock-ai-workbench .stock-ai-result-pane { min-height: 260px; }
+      .page-top .stock-ai-workbench .search-feedback { padding: 10px 12px; border: 1px solid var(--line); border-radius: 7px; background: #f5f7fa; line-height: 1.6; }
+      .page-top .stock-ai-workbench :is(.ai-review-grid, .ai-review-reader-link) { margin-top: 0; }
+      .page-top .stock-ai-workbench :is(.ai-review-card, .ai-result-section) { border-radius: 8px; padding: 14px; }
+      .page-top .stock-ai-workbench .ai-review-summary { background: #ffffff; border-color: var(--line); }
+      .page-top .stock-ai-workbench :is(.ai-copy, .ai-summary-lead, .ai-raw-content) { color: var(--ink); }
+      .page-top .stock-ai-workbench .chip:not(.warn):not(.info) { background: #f3f6fa; color: var(--muted); }
+      .page-top .stock-ai-workbench .source-link { border-color: var(--line); background: #edf3ff; color: #245dc5; }
+      .page-top .stock-ai-workbench .source-link-plain { background: #f3f6fa; color: var(--muted); }
+      .page-top .stock-ai-workbench .ai-source-details > summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+
+      @media (max-width: 960px) {
+        .page-top .stock-ai-workbench { grid-template-columns: minmax(0, 1fr); }
+      }
+
+      @media (max-width: 640px) {
+        .page-top .stock-ai-workbench :is(.stock-ai-control-pane, .stock-ai-result-pane) { padding: 14px; }
+      }
+      /* End dashboard AI workbench. */
     </style>
   </head>
   <body class="page-__PAGE_MODE__">
@@ -1087,82 +1170,111 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
               <div class="subtle" id="portfolio-note">broker 連携は使わず、手入力で保有銘柄を管理します。</div>
               <div class="search-feedback" id="portfolio-feedback"></div>
             </div>
-            <div class="ai-review-tools">
-              <div class="section-head" style="margin-bottom: 0;">
-                <div>
-                  <div class="eyebrow">AI分析</div>
-                  <h3>保有・ウォッチリストAIレビュー</h3>
+            <div class="stock-ai-workbench">
+              <section class="stock-ai-control-pane" aria-labelledby="stock-ai-control-heading">
+                <h3 id="stock-ai-control-heading">保有・ウォッチリストAIレビュー</h3>
+                <p class="subtle">分析条件を確認し、実行する分析方法を選んでください。</p>
+                <div class="ai-review-control-grid">
+                  <label class="stock-ai-field" for="stock-ai-mode">
+                    <span>分析方法</span>
+                    <select class="input" id="stock-ai-mode" aria-label="AI分析モード">
+                      <option value="scanner">軽量スキャン</option>
+                      <option value="analyst">個別詳細分析</option>
+                      <option value="judge" selected>全体売買判断</option>
+                      <option value="critical">重要局面分析</option>
+                    </select>
+                  </label>
+                  <label class="stock-ai-field" for="stock-ai-target">
+                    <span>分析対象</span>
+                    <select class="input" id="stock-ai-target" aria-label="AI分析対象">
+                      <option value="holdings">保有銘柄</option>
+                      <option value="candidates">狙い中銘柄</option>
+                      <option value="watchlist">監視銘柄</option>
+                      <option value="selected">選択銘柄</option>
+                      <option value="mock">テスト用仮保有銘柄</option>
+                    </select>
+                  </label>
+                  <label class="stock-ai-field" for="stock-ai-tickers">
+                    <span>選択銘柄コード</span>
+                    <input class="input" id="stock-ai-tickers" placeholder="選択銘柄: 7203,7974" aria-label="選択銘柄コード" />
+                  </label>
+                  <label class="stock-ai-field" for="stock-ai-position-intent">
+                    <span>建玉意図</span>
+                    <select class="input" id="stock-ai-position-intent" aria-label="建玉意図">
+                      <option value="">建玉意図: 未入力</option>
+                      <option value="short">短期玉</option>
+                      <option value="mid">中期玉</option>
+                      <option value="long">長期玉</option>
+                      <option value="short_and_mid">短期＋中期</option>
+                      <option value="core">コア玉</option>
+                      <option value="add">追加玉</option>
+                    </select>
+                  </label>
+                  <label class="stock-ai-field" for="stock-ai-user-hypothesis">
+                    <span>ユーザー仮説</span>
+                    <input class="input" id="stock-ai-user-hypothesis" placeholder="仮説: 防衛テーマと決算期待、短期過熱など" aria-label="ユーザー仮説" />
+                  </label>
+                </div>
+                <div class="checkbox-row">
+                  <label><input id="portfolio-ai-web-search" type="checkbox" /> Web検索ON</label>
                 </div>
                 <div class="score-chip" id="stock-ai-cost">--</div>
-              </div>
-              <div class="stock-ai-usage-panel" id="stock-ai-usage" aria-live="polite">
-                <div class="stock-ai-usage-grid">
-                  <div>
-                    <div class="eyebrow">アプリ内利用量（legacy stock-review）</div>
-                    <div class="stock-ai-usage-value" id="stock-ai-usage-today">本日 成功レビュー -- / --回・残り --・OpenAI呼出 --回・概算 $--</div>
-                  </div>
-                  <div>
-                    <div class="eyebrow">月間利用量</div>
-                    <div class="stock-ai-usage-value" id="stock-ai-usage-month">今月 成功レビュー --回・OpenAI呼出 --回・概算 $--</div>
-                  </div>
+                <div class="ai-review-actions stock-ai-mode-actions">
+                  <button class="primary-button" type="button" data-stock-ai-run="scanner">軽量スキャン</button>
+                  <button class="primary-button" type="button" data-stock-ai-run="analyst">個別詳細分析</button>
+                  <button class="primary-button" type="button" data-stock-ai-run="judge">全体売買判断</button>
+                  <button class="primary-button" type="button" data-stock-ai-run="critical">重要局面分析</button>
                 </div>
-                <div class="stock-ai-usage-warning" id="stock-ai-usage-unpriced" hidden></div>
-                <div class="subtle" id="stock-ai-usage-history-note" hidden></div>
-                <div class="subtle">1回＝正常完了した一括レビュー1件（銘柄数に関係なし）です。この集計は旧stock-review経路だけが対象です。金額はtoken使用量に基づく概算で、正式な請求額ではありません。OpenAI PlatformのUsage Dashboardを正本として確認してください。</div>
-              </div>
-              <div class="ai-review-control-grid">
-                <select class="input" id="stock-ai-mode" aria-label="AI分析モード">
-                  <option value="scanner">軽量スキャン</option>
-                  <option value="analyst">個別詳細分析</option>
-                  <option value="judge" selected>全体売買判断</option>
-                  <option value="critical">重要局面分析</option>
-                </select>
-                <select class="input" id="stock-ai-target" aria-label="AI分析対象">
-                  <option value="holdings">保有銘柄</option>
-                  <option value="candidates">狙い中銘柄</option>
-                  <option value="watchlist">監視銘柄</option>
-                  <option value="selected">選択銘柄</option>
-                  <option value="mock">テスト用仮保有銘柄</option>
-                </select>
-                <input class="input" id="stock-ai-tickers" placeholder="選択銘柄: 7203,7974" aria-label="選択銘柄コード" />
-                <input class="input" id="stock-ai-max-web-search" type="number" min="0" max="10" value="5" aria-label="Web検索最大回数" />
-                <select class="input" id="stock-ai-position-intent" aria-label="建玉意図">
-                  <option value="">建玉意図: 未入力</option>
-                  <option value="short">短期玉</option>
-                  <option value="mid">中期玉</option>
-                  <option value="long">長期玉</option>
-                  <option value="short_and_mid">短期＋中期</option>
-                  <option value="core">コア玉</option>
-                  <option value="add">追加玉</option>
-                </select>
-                <input class="input" id="stock-ai-user-hypothesis" placeholder="仮説: 防衛テーマと決算期待、短期過熱など" aria-label="ユーザー仮説" />
-              </div>
-              <div class="ai-review-actions">
-                <button class="primary-button" type="button" data-stock-ai-run="scanner">軽量スキャン</button>
-                <button class="primary-button" type="button" data-stock-ai-run="analyst">個別詳細分析</button>
-                <button class="primary-button" type="button" data-stock-ai-run="judge">全体売買判断</button>
-                <button class="primary-button" type="button" data-stock-ai-run="critical">重要局面分析</button>
-                <button class="ghost-button" type="button" data-stock-ai-run="prompt_only">ChatGPT投入用プロンプトを生成</button>
-                <button class="ghost-button" type="button" id="stock-ai-copy-prompt" disabled>プロンプトをコピー</button>
-              </div>
-              <div class="checkbox-row">
-                <label><input id="portfolio-ai-web-search" type="checkbox" /> Web検索ON</label>
-                <label><input id="portfolio-ai-mock-response" type="checkbox" /> APIなしのサンプル表示（課金なし）</label>
-                <label><input id="stock-ai-save-result" type="checkbox" checked /> 結果保存</label>
-                <label><input id="stock-ai-use-cache" type="checkbox" checked /> 前回結果の再表示</label>
-              </div>
-              <div class="search-feedback" id="portfolio-ai-review-feedback">未実行</div>
-              <textarea class="textarea prompt-output" id="stock-ai-prompt-output" readonly placeholder="ChatGPT投入用プロンプト"></textarea>
+                <details class="stock-ai-details" id="stock-ai-details">
+                  <summary>詳細設定・利用量・ChatGPT用プロンプト</summary>
+                  <div class="stock-ai-details-content">
+                    <label class="stock-ai-field" for="stock-ai-max-web-search">
+                      <span>Web検索最大回数</span>
+                      <input class="input" id="stock-ai-max-web-search" type="number" min="0" max="10" value="5" aria-label="Web検索最大回数" />
+                    </label>
+                    <div class="checkbox-row">
+                      <label><input id="portfolio-ai-mock-response" type="checkbox" /> APIなしのサンプル表示（課金なし）</label>
+                      <label><input id="stock-ai-save-result" type="checkbox" checked /> 結果保存</label>
+                      <label><input id="stock-ai-use-cache" type="checkbox" checked /> 前回結果の再表示</label>
+                    </div>
+                    <div class="stock-ai-usage-panel" id="stock-ai-usage" aria-live="polite">
+                      <div class="stock-ai-usage-grid">
+                        <div>
+                          <div class="eyebrow">アプリ内利用量（legacy stock-review）</div>
+                          <div class="stock-ai-usage-value" id="stock-ai-usage-today">本日 成功レビュー -- / --回・残り --・OpenAI呼出 --回・概算 $--</div>
+                        </div>
+                        <div>
+                          <div class="eyebrow">月間利用量</div>
+                          <div class="stock-ai-usage-value" id="stock-ai-usage-month">今月 成功レビュー --回・OpenAI呼出 --回・概算 $--</div>
+                        </div>
+                      </div>
+                      <div class="stock-ai-usage-warning" id="stock-ai-usage-unpriced" hidden></div>
+                      <div class="subtle" id="stock-ai-usage-history-note" hidden></div>
+                      <div class="subtle">1回＝正常完了した一括レビュー1件（銘柄数に関係なし）です。この集計は旧stock-review経路だけが対象です。金額はtoken使用量に基づく概算で、正式な請求額ではありません。OpenAI PlatformのUsage Dashboardを正本として確認してください。</div>
+                    </div>
+                    <div class="ai-review-actions">
+                      <button class="ghost-button" type="button" data-stock-ai-run="prompt_only">ChatGPT投入用プロンプトを生成</button>
+                      <button class="ghost-button" type="button" id="stock-ai-copy-prompt" disabled>プロンプトをコピー</button>
+                    </div>
+                    <textarea class="textarea prompt-output" id="stock-ai-prompt-output" readonly hidden aria-label="ChatGPT投入用プロンプト" placeholder="ChatGPT投入用プロンプト"></textarea>
+                  </div>
+                </details>
+              </section>
+              <section class="stock-ai-result-pane" aria-labelledby="stock-ai-result-heading">
+                <h3 id="stock-ai-result-heading">分析結果</h3>
+                <p class="subtle">送信時の条件と回答の時点を確認できます。条件を変えた場合は再実行してください。</p>
+                <div class="search-feedback" id="portfolio-ai-review-feedback" role="status" aria-live="polite">未実行</div>
+                <a
+                  class="action-link ai-review-reader-link"
+                  id="portfolio-ai-review-reader-link"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  referrerpolicy="no-referrer"
+                  hidden
+                >回答を別タブ／ウィンドウで大きく表示</a>
+                <div class="ai-review-grid" id="portfolio-ai-review-results" aria-live="polite" aria-busy="false"></div>
+              </section>
             </div>
-            <a
-              class="action-link ai-review-reader-link"
-              id="portfolio-ai-review-reader-link"
-              target="_blank"
-              rel="noopener noreferrer"
-              referrerpolicy="no-referrer"
-              hidden
-            >回答を別タブ／ウィンドウで大きく表示</a>
-            <div class="ai-review-grid" id="portfolio-ai-review-results" aria-live="polite" aria-busy="false"></div>
             <div id="portfolio-space-editor">
               <form class="search-row" id="portfolio-form" style="margin-top: 12px;">
                 <input class="search-input" id="portfolio-ticker-input" name="ticker_code" placeholder="7203 / 285A" aria-label="保有銘柄コード" />
@@ -1696,6 +1808,9 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
           clonedChild.querySelectorAll("details.ai-raw-output").forEach((details) => {
             details.open = true;
           });
+          clonedChild.querySelectorAll("details.ai-source-details").forEach((details) => {
+            details.open = true;
+          });
           content.appendChild(clonedChild);
         });
         resultSection.append(sectionHeading, content);
@@ -2075,6 +2190,7 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
           const name = names.get(snapshot.ticker);
           const unknownLabel = `名称未登録（${ticker}）`;
           const label = name && name !== unknownLabel ? `${name}（${ticker}）` : unknownLabel;
+          const sourceDetails = [];
           const dates = series.map(([key, title, fields]) => {
             const present = fields.some((field) => {
               const value = snapshot[field];
@@ -2083,13 +2199,24 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
             if (!present) return `${title}: 未入力／未取得`;
             const records = snapshot.source_metadata?.[key] || [];
             if (!records.length) return `${title}: 基準日時未取得・由来未確認`;
-            return `${title}: ${records.map((record) => [
+            sourceDetails.push(`${title}: ${records.map((record) => [
               record.as_of || "基準日時未取得",
               record.source || "由来未確認",
               record.version ? `更新版 ${record.version}` : "",
-            ].filter(Boolean).join(" / ")).join("、")}`;
+            ].filter(Boolean).join(" / ")).join("、")}`);
+            const recordedDates = [...new Set(records.map((record) => record.as_of).filter(Boolean))].sort();
+            const range = recordedDates.length > 1
+              ? `${recordedDates[0]} ～ ${recordedDates[recordedDates.length - 1]}`
+              : recordedDates[0] || "基準日時未取得";
+            const sources = [...new Set(records.map((record) => record.source || "由来未確認"))].join("、");
+            const missingDates = records.filter((record) => !record.as_of).length;
+            const missingNote = missingDates && recordedDates.length ? ` / 基準日時未取得 ${missingDates}件` : "";
+            return `${title}: ${range} / ${sources}${records.length > 1 ? `（${records.length}件）` : ""}${missingNote}`;
           });
-          return `<li><strong>${escapeHtml(label)}</strong>${renderCompactList(dates)}</li>`;
+          const details = sourceDetails.length
+            ? `<details class="ai-source-details"><summary>出典・基準日時の詳細</summary>${renderCompactList(sourceDetails)}</details>`
+            : "";
+          return `<li><strong>${escapeHtml(label)}</strong>${renderCompactList(dates)}${details}</li>`;
         }).join("");
         return `<section class="ai-result-section ai-data-basis"><h4>回答の時点と元データ</h4>
           ${renderAiParagraph(`回答生成日時: ${generated}`)}
@@ -2845,11 +2972,20 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
       };
 
       const syncStockAiPrompt = (prompt = "") => {
+        const previousPrompt = state.lastManualPrompt;
         state.lastManualPrompt = prompt || "";
         const output = document.getElementById("stock-ai-prompt-output");
         const copyButton = document.getElementById("stock-ai-copy-prompt");
-        if (output) output.value = state.lastManualPrompt;
+        if (output) {
+          output.value = state.lastManualPrompt;
+          output.hidden = !state.lastManualPrompt;
+        }
         if (copyButton) copyButton.disabled = !state.lastManualPrompt;
+        const details = document.getElementById("stock-ai-details");
+        if (details && state.lastManualPrompt && state.lastManualPrompt !== previousPrompt
+            && state.portfolioAiReview.data?.mode === "prompt_only") {
+          details.open = true;
+        }
       };
 
       const buildStockAiRequest = (modeOverride = null) => {
