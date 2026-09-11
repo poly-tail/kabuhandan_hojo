@@ -34,7 +34,7 @@ def isolated_search_review(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     get_settings.cache_clear()
 
 
-def run_review(**overrides):
+def run_review(*, market_snapshots=None, **overrides):
     options = PortfolioAiReviewRequest(
         **{
             "target": "selected",
@@ -48,7 +48,7 @@ def run_review(**overrides):
     return service.analyze_portfolio_with_openai(
         holdings=[PortfolioAiHolding(ticker="7203", name="トヨタ自動車", quantity=0)],
         candidates=[],
-        market_snapshots=[PortfolioMarketSnapshot(ticker="7203")],
+        market_snapshots=market_snapshots or [PortfolioMarketSnapshot(ticker="7203")],
         options=options,
         holdings_source="request",
     )
@@ -184,11 +184,15 @@ def test_cache_preserves_original_search_and_generation_without_new_usage(monkey
     monkeypatch.setattr(service, "_call_openai", lambda **_: (
         model_output(), PortfolioAiUsage(web_search_calls=2),
     ))
-    original = run_review()
+    snapshots = [PortfolioMarketSnapshot(
+        ticker="7203", price=3000,
+        source_metadata={"price": [{"source": "J-Quants", "as_of": "2026-09-10"}]},
+    )]
+    original = run_review(market_snapshots=snapshots)
     before = usage_module.AI_REVIEW_USAGE_V2_PATH.read_bytes()
     monkeypatch.setattr(service, "_load_cached_response", lambda *_, **__: original.model_copy(deep=True))
     monkeypatch.setattr(service, "_call_openai", lambda **_: pytest.fail("cached provider call"))
-    cached = run_review(use_cache=True)
+    cached = run_review(use_cache=True, market_snapshots=snapshots)
     assert cached.cache_hit is True
     assert cached.generated_at == original.generated_at
     assert cached.web_search_used is True

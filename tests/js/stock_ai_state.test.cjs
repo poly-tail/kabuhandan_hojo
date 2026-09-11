@@ -68,6 +68,8 @@ function harness() {
     renderAiStockCard: () => '', renderAiReviewSummary: () => 'answer',
     renderAiRawFallback: (value) => value || '', renderAiParagraph: (value) => value,
     aiHoldingsSourceLabel: (value) => value,
+    aiModeLabel: (value) => value, aiHistoryTargetLabel: (value) => value,
+    formatDateTime: (value) => String(value), renderCompactList: (items) => items.join('\n'),
     setPortfolioFeedback: (message) => { element('portfolio-feedback').textContent = message; },
     setManagementSpaceFeedback: (message) => { element('space-feedback').textContent = message; },
     prepareAiReviewReader: (key, review) => {
@@ -79,6 +81,7 @@ function harness() {
     'watchlistSpaceKey', 'activeWatchlistId', 'activeWatchlistCollection', 'activeWatchlistSelection',
     'clearAiReviewReader', 'setPortfolioAiButtonsDisabled', 'parseTickerInput',
     'aiWebSearchEvidenceLabel', 'aiWebSearchSettingLabel',
+    'renderAiRequestSnapshot', 'renderAiDataBasis',
     'selectedWatchlistItems', 'selectedStockAiHoldings', 'estimateStockAiCost', 'updateStockAiCost',
     'syncStockAiPrompt', 'buildStockAiRequest', 'stockAiReviewContext', 'isHighCostStockAiRequest',
     'renderPortfolioAiReview', 'runPortfolioAiReview', 'invalidateStockAiReview',

@@ -39,3 +39,6 @@ jobs:
       - name: Run dashboard event sequences
         run: node tests/js/stock_ai_state.test.cjs
 
+      - name: Run dashboard snapshot rendering tests
+        run: node tests/js/stock_ai_snapshot.test.cjs
+

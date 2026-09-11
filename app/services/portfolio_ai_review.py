@@ -51,12 +51,21 @@ from app.schemas.portfolio_ai import (
     PortfolioAiSummary,
     PortfolioAiUsage,
     PortfolioMarketSnapshot,
+    PortfolioSnapshotSource,
     ReasoningEffort,
     ReviewStatus,
 )
 from app.services.ai_usage import get_legacy_ai_usage_ledger
 from app.services.mock_watchlist import mock_watchlist_service
 from app.services.portfolio import portfolio_service
+from app.services.portfolio_ai_cache import (
+    CACHE_FORMAT_VERSION,
+    SERIES_FIELDS,
+    build_cache_key,
+    cache_entry_is_current,
+    cache_ineligibility,
+    prompt_fingerprint,
+)
 from app.services.watchlist import WatchlistCollectionNotFoundError, WatchlistService
 from kabuhandan_hojo.services.securities import SecurityService
 
@@ -457,6 +466,10 @@ class PortfolioAiReviewService:
         prices = self.security_service.latest_prices(session, ticker, limit=80)
         if prices:
             latest = prices[-1]
+            snapshot.source_metadata["price"] = [
+                self._snapshot_source(record, as_of_field="target_date")
+                for record in prices[-25:]
+            ]
             previous = prices[-2] if len(prices) >= 2 else None
             snapshot.price = self._to_float(latest.close_price)
             snapshot.volume = int(latest.volume) if latest.volume is not None else None
@@ -471,6 +484,11 @@ class PortfolioAiReviewService:
 
         feature = self.security_service.latest_feature(session, ticker)
         if feature is not None:
+            snapshot.source_metadata["technical"] = [
+                self._snapshot_source(
+                    feature, as_of_field="target_date", source="local:technical_feature_daily",
+                )
+            ]
             snapshot.ma_5 = self._to_float(feature.sma_5)
             snapshot.ma_25 = self._to_float(feature.sma_25)
             snapshot.ma_75 = self._to_float(feature.sma_75)
@@ -483,11 +501,29 @@ class PortfolioAiReviewService:
 
         flow = self.security_service.latest_flow(session, ticker)
         if flow is not None:
+            snapshot.source_metadata["flow"] = [self._snapshot_source(flow, as_of_field="target_date")]
             snapshot.credit_ratio = self._to_float(flow.credit_ratio)
 
         events = self.security_service.recent_events(session, ticker, limit=3)
         snapshot.recent_news = [event.summary_text for event in events]
+        if events:
+            snapshot.source_metadata["news"] = [
+                self._snapshot_source(event, as_of_field="event_time") for event in events
+            ]
         return snapshot
+
+    @staticmethod
+    def _snapshot_source(
+        record: Any, *, as_of_field: str, source: str | None = None,
+    ) -> PortfolioSnapshotSource:
+        """Copy observed record dates; never substitute processing time."""
+        as_of = getattr(record, as_of_field, None)
+        version = getattr(record, "updated_at", None)
+        return PortfolioSnapshotSource(
+            source=source or getattr(record, "source_name", None),
+            as_of=as_of.isoformat() if as_of is not None else None,
+            version=version.isoformat() if version is not None else None,
+        )
 
     def get_technical_snapshot(self, ticker: str, *, session: Session | None = None) -> PortfolioMarketSnapshot:
         """Return technical fields through the same snapshot contract."""
@@ -578,6 +614,8 @@ class PortfolioAiReviewService:
             "mode_label": MODE_LABELS[options.mode],
             "judgement_labels": JUDGEMENT_LABELS,
             "watchlist_id": options.watchlist_id,
+            "holdings_source": holdings_source,
+            "prompt_fingerprint": prompt_fingerprint(prompt_bundle),
             "include_web_search": include_web_search,
             "max_web_search_calls": max_web_search_calls,
         }
@@ -649,7 +687,14 @@ class PortfolioAiReviewService:
             return response
 
         cache_key = self._cache_key(request_payload)
-        if options.use_cache and not options.mock_response:
+        cache_reasons = cache_ineligibility(market_snapshots)
+        cache_enabled = settings.openai_review_cache_ttl_seconds > 0 and not cache_reasons
+        if not options.mock_response:
+            if cache_reasons:
+                warnings.append("自動キャッシュ再利用を無効化: " + " / ".join(cache_reasons) + "。保存履歴は明示して閲覧できます。")
+            elif not cache_enabled:
+                warnings.append("設定により自動キャッシュ再利用を無効化しています。保存履歴は明示して閲覧できます。")
+        if options.use_cache and not options.mock_response and cache_enabled:
             cached = self._load_cached_response(cache_key)
             if cached is not None:
                 cached.cache_hit = True
@@ -895,6 +940,7 @@ class PortfolioAiReviewService:
             response.status = "success"
             response.error = None
         response.mode = options.mode
+        response.generated_at = self._tokyo_now()
         response.analysis_mode = options.analysis_mode
         response.holdings_source = holdings_source
         for field, value in self._web_search_evidence(options, usage=usage).items():
@@ -930,7 +976,7 @@ class PortfolioAiReviewService:
             self._increment_daily_usage()
         if options.save_result:
             history_saved = self._save_ai_review_result_with_warning(response)
-            if history_saved and not raw_fallback:
+            if history_saved and not raw_fallback and cache_enabled:
                 self._save_cached_response(cache_key, response)
         return response
 
@@ -2433,6 +2479,28 @@ class PortfolioAiReviewService:
         if review.cache_hit:
             lines.extend(["- 今回の新規検索: 0回（API呼出・追加利用量なし）", ""])
 
+        lines.extend(["## 入力データの基準日時", "", "回答生成日時とは別の、分析に使った記録の時点です。", ""])
+        series_labels = {"price": "価格", "technical": "テクニカル", "flow": "需給",
+                         "news": "ニュース", "events": "予定イベント"}
+        for snapshot in review.market_snapshot:
+            lines.extend([f"### {self._markdown_inline(snapshot.ticker)}", ""])
+            for series, fields in SERIES_FIELDS.items():
+                present = any(getattr(snapshot, field) not in (None, [], "") for field in fields)
+                records = snapshot.source_metadata.get(series, []) if present else []
+                if not present:
+                    detail = "未入力・未取得"
+                elif not records:
+                    detail = "基準日時・由来未取得"
+                else:
+                    detail = " / ".join(
+                        f"{record.as_of or '基準日時未取得'}（{record.source or '由来未取得'}）"
+                        for record in records
+                    )
+                lines.append(f"- {series_labels[series]}: {self._markdown_inline(detail)}")
+            lines.append("")
+        if not review.market_snapshot:
+            lines.extend(["元データの基準日時は未記録です。", ""])
+
         def add_text(title: str, value: Any, *, level: int = 3) -> None:
             if not str(value or "").strip():
                 return
@@ -2715,19 +2783,24 @@ class PortfolioAiReviewService:
         return [f"{fence}{language}", value, fence]
 
     def _cache_key(self, request_payload: dict[str, Any]) -> str:
-        raw = json.dumps(request_payload, ensure_ascii=False, sort_keys=True)
-        return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+        return build_cache_key(request_payload)
 
     def _load_cached_response(self, cache_key: str) -> PortfolioAiReviewResponse | None:
         cache = self._read_json_object(AI_REVIEW_CACHE_PATH)
         cached = cache.get(cache_key)
-        if not isinstance(cached, dict):
+        if not cache_entry_is_current(
+            cached, now=self._tokyo_now(),
+            ttl_seconds=get_settings().openai_review_cache_ttl_seconds,
+        ):
             return None
         try:
-            response = PortfolioAiReviewResponse.model_validate(cached)
+            response = PortfolioAiReviewResponse.model_validate(cached["response"])
         except Exception:
             return None
-        if response.status != "success" or response.raw_model_output is not None:
+        if (response.status != "success" or response.raw_model_output is not None
+                or response.mock_response or response.mode == "prompt_only"
+                or cache_ineligibility(response.market_snapshot)
+                or self._cache_key(response.request_payload) != cache_key):
             return None
         return self._enrich_response_security_references(
             response,
@@ -2736,10 +2809,17 @@ class PortfolioAiReviewService:
         )
 
     def _save_cached_response(self, cache_key: str, response: PortfolioAiReviewResponse) -> None:
-        if response.status != "success" or response.raw_model_output is not None:
+        if (response.status != "success" or response.raw_model_output is not None
+                or response.mock_response or response.mode == "prompt_only"
+                or cache_ineligibility(response.market_snapshot)
+                or get_settings().openai_review_cache_ttl_seconds <= 0):
             return
         cache = self._read_json_object(AI_REVIEW_CACHE_PATH)
-        cache[cache_key] = response.model_dump(mode="json")
+        cache[cache_key] = {
+            "format_version": CACHE_FORMAT_VERSION,
+            "recorded_at": self._tokyo_now().isoformat(),
+            "response": response.model_dump(mode="json"),
+        }
         if len(cache) > 50:
             cache = dict(list(cache.items())[-50:])
         self._write_json(AI_REVIEW_CACHE_PATH, cache)

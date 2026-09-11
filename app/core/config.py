@@ -62,6 +62,9 @@ class Settings(BaseSettings):
     openai_max_web_search_calls: int = Field(default=5, ge=0, alias="OPENAI_MAX_WEB_SEARCH_CALLS")
     openai_max_stocks_per_request: int = Field(default=20, ge=1, alias="OPENAI_MAX_STOCKS_PER_REQUEST")
     openai_daily_request_limit: int = Field(default=300, ge=1, alias="OPENAI_DAILY_REQUEST_LIMIT")
+    openai_review_cache_ttl_seconds: int = Field(
+        default=300, ge=0, le=300, alias="OPENAI_REVIEW_CACHE_TTL_SECONDS",
+    )
     openai_default_verbosity: str = Field(default="medium", alias="OPENAI_DEFAULT_VERBOSITY")
     openai_critical_confirmation_required: bool = Field(default=True, alias="OPENAI_CRITICAL_CONFIRMATION_REQUIRED")
 

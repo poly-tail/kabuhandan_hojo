@@ -2039,6 +2039,64 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
           : `Web検索設定${effective}（元の要求は未記録）`;
       };
 
+      const renderAiRequestSnapshot = (review) => {
+        const snapshot = review?.requestSnapshot;
+        if (!snapshot) return "";
+        const positionLabels = {
+          short: "短期玉", mid: "中期玉", long: "長期玉", short_and_mid: "短期＋中期",
+          core: "コア玉", add: "追加玉",
+        };
+        const conditions = [
+          `分析方法: ${aiModeLabel(snapshot.mode)}`,
+          `対象: ${review.contextLabel || aiHistoryTargetLabel(snapshot.target)}`,
+          `建玉意図: ${positionLabels[snapshot.position_intent] || snapshot.position_intent || "未入力"}`,
+          `ユーザー仮説: ${snapshot.user_hypothesis || "未入力"}`,
+          `Web検索要求: ${snapshot.include_web_search ? "ON" : "OFF"} / 最大回数設定 ${snapshot.max_web_search_calls ?? "未記録"}`,
+          `サンプル回答: ${snapshot.mock_response || snapshot.use_mock_holdings ? "ON" : "OFF"}`,
+        ];
+        if (snapshot.tickers?.length) conditions.push(`指定コード: ${snapshot.tickers.map(publicSecurityCode).join("、")}`);
+        return `<article class="ai-review-card ai-request-snapshot"><h3 class="ai-card-title">送信時の分析条件</h3>${renderCompactList(conditions)}</article>`;
+      };
+
+      const renderAiDataBasis = (data) => {
+        const generated = data?.generated_at ? formatDateTime(data.generated_at) : "未記録";
+        const series = [
+          ["price", "価格", ["price", "change_rate", "volume", "support_levels", "resistance_levels"]],
+          ["technical", "テクニカル", ["ma_5", "ma_25", "ma_75", "rsi", "macd", "upper_wick_ratio", "lower_wick_ratio", "body_ratio", "close_position_ratio"]],
+          ["flow", "需給", ["credit_ratio"]],
+          ["news", "ニュース", ["recent_news"]],
+          ["events", "決算予定", ["earnings_date"]],
+        ];
+        const names = new Map([...(data?.holdings_snapshot || []), ...(data?.candidates_snapshot || [])]
+          .map((item) => [item.ticker, item.name]));
+        const snapshots = data?.market_snapshot || [];
+        const items = snapshots.map((snapshot) => {
+          const ticker = publicSecurityCode(snapshot.ticker);
+          const name = names.get(snapshot.ticker);
+          const label = name ? `${name}（${ticker}）` : `名称未登録（${ticker}）`;
+          const dates = series.map(([key, title, fields]) => {
+            const present = fields.some((field) => {
+              const value = snapshot[field];
+              return Array.isArray(value) ? value.length > 0 : value !== null && value !== undefined && value !== "";
+            });
+            if (!present) return `${title}: 未入力／未取得`;
+            const records = snapshot.source_metadata?.[key] || [];
+            if (!records.length) return `${title}: 基準日時未取得・由来未確認`;
+            return `${title}: ${records.map((record) => [
+              record.as_of || "基準日時未取得",
+              record.source || "由来未確認",
+              record.version ? `更新版 ${record.version}` : "",
+            ].filter(Boolean).join(" / ")).join("、")}`;
+          });
+          return `<li><strong>${escapeHtml(label)}</strong>${renderCompactList(dates)}</li>`;
+        }).join("");
+        return `<section class="ai-result-section ai-data-basis"><h4>回答の時点と元データ</h4>
+          ${renderAiParagraph(`回答生成日時: ${generated}`)}
+          ${items ? `<ul class="compact-list">${items}</ul>` : renderAiParagraph("元データの基準日時: 未記録（入力系列も未確認）")}
+          ${renderAiParagraph("回答生成日時は元データの基準日時ではありません。未観測のニュース等の最新性は保証しません。")}
+        </section>`;
+      };
+
       const renderAiReviewSummary = (data, contextLabel = "") => {
         const summary = data.portfolio_summary || {};
         const overallView = String(summary.overall_view || "").trim();
@@ -2077,6 +2135,7 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
               <span class="subtle">${escapeHtml(formatDateTime(data.generated_at))}</span>
             </div>
             ${renderAiParagraph(primarySummary, "ai-summary-lead")}
+            ${renderAiDataBasis(data)}
             ${renderAiTextSection("ポートフォリオ総括", additionalPortfolioSummary)}
             <div class="chips">
               ${chips.map((chip) => `<span class="chip">${escapeHtml(chip)}</span>`).join("")}
@@ -2498,6 +2557,7 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
               </div>
               ${renderAiParagraph(data.error?.message || data.portfolio_summary?.overall_view || "分析できませんでした。")}
               <div class="chips"><span class="chip">${escapeHtml(aiWebSearchSettingLabel(data))}</span><span class="chip">${escapeHtml(aiWebSearchEvidenceLabel(data))}</span></div>
+              ${renderAiDataBasis(data)}
               ${renderAiRawFallback(data.raw_model_output)}
             </article>
           `);
@@ -2888,12 +2948,12 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
         }
         if (review.status === "loading") {
           const targetLabel = review.contextLabel || "対象銘柄";
-          fill("portfolio-ai-review-results", `<article class="ai-review-card">${escapeHtml(targetLabel)}を分析中...</article>`);
+          fill("portfolio-ai-review-results", `${renderAiRequestSnapshot(review)}<article class="ai-review-card">${escapeHtml(targetLabel)}を分析中...</article>`);
           syncStockAiPrompt("");
           return;
         }
         if (review.status === "failed") {
-          fill("portfolio-ai-review-results", `<article class="ai-review-card error">分析に失敗しました: ${escapeHtml(review.error || "")}</article>`);
+          fill("portfolio-ai-review-results", `${renderAiRequestSnapshot(review)}<article class="ai-review-card error">分析に失敗しました: ${escapeHtml(review.error || "")}</article>`);
           return;
         }
 
@@ -2907,6 +2967,7 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
         if (status !== "success") {
           const rawOutput = renderAiRawFallback(data.raw_model_output);
           fill("portfolio-ai-review-results", `
+            ${renderAiRequestSnapshot(review)}
             <article class="ai-review-card error">
               <div class="meta">
                 <h3 class="ai-card-title">${escapeHtml(aiReviewResultStatusLabel(data))}</h3>
@@ -2915,6 +2976,7 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
               </div>
               ${renderAiParagraph(data.error?.message || data.portfolio_summary?.overall_view || "分析できませんでした。")}
               <div class="chips"><span class="chip">${escapeHtml(aiWebSearchSettingLabel(data))}</span><span class="chip">${escapeHtml(aiWebSearchEvidenceLabel(data))}</span></div>
+              ${renderAiDataBasis(data)}
               ${rawOutput}
             </article>
           `);
@@ -2926,6 +2988,7 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
         const stockCards = (data.stocks || []).map(renderAiStockCard).join("");
 
         fill("portfolio-ai-review-results", `
+          ${renderAiRequestSnapshot(review)}
           ${renderAiReviewSummary(data, review.contextLabel || "")}
           ${stockCards}
         `);
@@ -3126,6 +3189,7 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
               </div>
               ${renderAiParagraph(data.error?.message || data.portfolio_summary?.overall_view || "分析できませんでした。")}
               <div class="chips"><span class="chip">${escapeHtml(aiWebSearchSettingLabel(data))}</span><span class="chip">${escapeHtml(aiWebSearchEvidenceLabel(data))}</span></div>
+              ${renderAiDataBasis(data)}
               ${rawOutput}
             </article>
           `);

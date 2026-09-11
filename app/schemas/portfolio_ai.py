@@ -117,6 +117,16 @@ class PortfolioAiReviewRequest(BaseModel):
     position_intent: str | None = None
 
 
+class PortfolioSnapshotSource(BaseModel):
+    """Observed source/date/version of a record actually used in a snapshot."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    source: str | None = None
+    as_of: str | None = None
+    version: str | None = None
+
+
 class PortfolioMarketSnapshot(BaseModel):
     """Market data snapshot that can be backed by real price APIs later."""
 
@@ -140,6 +150,7 @@ class PortfolioMarketSnapshot(BaseModel):
     credit_ratio: float | None = None
     earnings_date: str | None = None
     recent_news: list[str] = Field(default_factory=list)
+    source_metadata: dict[str, list[PortfolioSnapshotSource]] = Field(default_factory=dict)
 
 
 class PortfolioAiReviewSource(BaseModel):
