@@ -25,10 +25,13 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -e .[dev]
+          python -m pip install -e .[dev,browser]
+
+      - name: Install Chromium for isolated UI checks
+        run: python -m playwright install --with-deps chromium
 
       - name: Compile sources
-        run: python -m compileall src scripts
+        run: python -m compileall -q app src scripts
 
       - name: Check current pointers
         run: python scripts/sync_current_files.py --check
@@ -41,4 +44,7 @@ jobs:
 
       - name: Run dashboard snapshot rendering tests
         run: node tests/js/stock_ai_snapshot.test.cjs
+
+      - name: Check dashboard in Chromium with synthetic APIs
+        run: python scripts/check_stock_ai_browser.py
 
