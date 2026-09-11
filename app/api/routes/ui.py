@@ -1412,6 +1412,10 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
         collectionFormMode: null,
         dashboardRequestId: 0,
         stockAiRequestId: 0,
+        stockAiBusyRequestId: null,
+        stockAiInputIdentity: null,
+        stockAiDataSynchronized: true,
+        stockAiDataRevision: 0,
         stockAiHistoryRequestId: 0,
         stockAiHistoryDetailRequestId: 0,
       };
@@ -2569,6 +2573,37 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
         });
       };
 
+      const syncStockAiExecutionState = () => {
+        setPortfolioAiButtonsDisabled(state.stockAiBusyRequestId !== null || !state.stockAiDataSynchronized || !state.data);
+        const feedback = document.getElementById("portfolio-ai-review-feedback");
+        if (feedback && state.portfolioAiReview.status === "idle") {
+          if (!state.stockAiDataSynchronized) {
+            feedback.textContent = "保有・リスト情報が未同期です。画面を再取得してから分析してください。";
+          } else if (state.stockAiBusyRequestId !== null) {
+            feedback.textContent = "条件変更により前の回答は無効です。実行中の処理の完了を待っています。";
+          } else {
+            feedback.textContent = aiReviewResultStatusLabel({ status: "idle" });
+          }
+        }
+      };
+
+      const stockAiInputIdentity = () => JSON.stringify([
+        ...[
+          "stock-ai-mode", "stock-ai-target", "stock-ai-tickers", "stock-ai-max-web-search",
+          "stock-ai-user-hypothesis", "stock-ai-position-intent",
+        ].map((id) => document.getElementById(id)?.value || ""),
+        ...["portfolio-ai-web-search", "portfolio-ai-mock-response"]
+          .map((id) => document.getElementById(id)?.checked ?? false),
+        state.activeManagementSpace,
+        Array.from(activeWatchlistSelection()),
+      ]);
+
+      const markStockAiDataUnsynced = () => {
+        state.stockAiDataRevision += 1;
+        state.stockAiDataSynchronized = false;
+        invalidateStockAiReview();
+      };
+
       const parseTickerInput = () => {
         const value = document.getElementById("stock-ai-tickers")?.value || "";
         return value
@@ -2603,8 +2638,8 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
             ticker,
             name: item?.name || ticker,
             market: item?.market || "TSE",
-            quantity: Number(item?.quantity || 0),
-            average_price: item?.average_cost ? Number(item.average_cost) : null,
+            quantity: state.data?.mode === "mock" ? 0 : Number(item?.quantity || 0),
+            average_price: state.data?.mode === "mock" ? null : (item?.average_cost ? Number(item.average_cost) : null),
           };
         });
         const merged = new Map();
@@ -2618,14 +2653,14 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
         const includeWebSearch = document.getElementById("portfolio-ai-web-search")?.checked ?? false;
         const webCalls = Number(document.getElementById("stock-ai-max-web-search")?.value || 0);
         const counts = {
-          holdings: (state.data?.portfolio_items || []).length || 7,
+          holdings: (state.data?.portfolio_items || []).length,
           watchlist: (state.data?.watchlist_items || []).length || 0,
-          candidates: 2,
+          candidates: 0,
           selected: selectedStockAiHoldings().length,
           mock: 9,
         };
         const count = counts[target] ?? 0;
-        if (target === "mock") {
+        if (target === "mock" || document.getElementById("portfolio-ai-mock-response")?.checked) {
           return { count, estimate: 0 };
         }
         const base = { scanner: 0.006, analyst: 0.02, judge: 0.045, critical: 0.075, prompt_only: 0 }[mode] ?? 0.02;
@@ -2757,7 +2792,7 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
           target,
           watchlist_id: watchlistId,
           tickers,
-          use_mock_holdings: target === "mock",
+          use_mock_holdings: target === "mock" || (target === "selected" && state.data?.mode === "mock" && selectedWatchlistItems().length > 0),
           holdings,
           include_web_search: includeWebSearch,
           risk_preference: "balanced",
@@ -2823,6 +2858,7 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
         if (review.status === "idle") {
           fill("portfolio-ai-review-results", "");
           syncStockAiPrompt("");
+          syncStockAiExecutionState();
           return;
         }
         if (review.status === "loading") {
@@ -2872,8 +2908,16 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
       };
 
       const runPortfolioAiReview = async (modeOverride = null) => {
+        if (state.stockAiBusyRequestId !== null || !state.stockAiDataSynchronized || !state.data) {
+          syncStockAiExecutionState();
+          return;
+        }
         const payloadBody = buildStockAiRequest(modeOverride);
-        const reviewContext = stockAiReviewContext(payloadBody);
+        const reviewContext = {
+          ...stockAiReviewContext(payloadBody),
+          requestSnapshot: JSON.parse(JSON.stringify(payloadBody)),
+        };
+        state.stockAiInputIdentity = stockAiInputIdentity();
         if (payloadBody.target === "selected" && !payloadBody.holdings.length && !payloadBody.tickers.length) {
           state.portfolioAiReview = {
             status: "failed",
@@ -2889,6 +2933,7 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
           if (!ok) return;
         }
         const requestId = ++state.stockAiRequestId;
+        state.stockAiBusyRequestId = requestId;
         state.portfolioAiReview = {
           status: "loading",
           data: null,
@@ -2915,8 +2960,11 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
             ...reviewContext,
           };
         } finally {
+          if (state.stockAiBusyRequestId === requestId) {
+            state.stockAiBusyRequestId = null;
+            syncStockAiExecutionState();
+          }
           if (requestId === state.stockAiRequestId) {
-            setPortfolioAiButtonsDisabled(false);
             renderPortfolioAiReview();
           }
           await Promise.all([loadStockAiUsage(), loadStockAiHistory()]);
@@ -2924,6 +2972,11 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
       };
 
       const invalidateStockAiReview = () => {
+        state.stockAiInputIdentity = stockAiInputIdentity();
+        if (state.portfolioAiReview.status === "idle" && !state.lastManualPrompt) {
+          syncStockAiExecutionState();
+          return;
+        }
         state.stockAiRequestId += 1;
         state.portfolioAiReview = {
           status: "idle",
@@ -2932,8 +2985,8 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
           contextLabel: null,
           readerTitle: null,
         };
-        setPortfolioAiButtonsDisabled(false);
         renderPortfolioAiReview();
+        syncStockAiExecutionState();
       };
 
       const syncWatchlistSelectionToAiTarget = () => {
@@ -2965,6 +3018,17 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
           webSearch.checked = target !== "mock" && ["analyst", "judge", "critical"].includes(mode);
           updateStockAiCost();
         };
+        // Only analysis inputs invalidate an answer. Saving and cache reuse are
+        // execution preferences and remain outside the semantic input identity.
+        const onAnalysisInput = (event) => {
+          if (state.stockAiInputIdentity !== stockAiInputIdentity()) {
+            if (["stock-ai-mode", "stock-ai-target"].includes(event.target.id)) {
+              syncWebSearchDefaultForMode();
+            }
+            invalidateStockAiReview();
+          }
+          updateStockAiCost();
+        };
         [
           "stock-ai-mode",
           "stock-ai-target",
@@ -2974,17 +3038,15 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
           "stock-ai-position-intent",
           "portfolio-ai-web-search",
           "portfolio-ai-mock-response",
-          "stock-ai-save-result",
-          "stock-ai-use-cache",
         ].forEach((id) => {
           const element = document.getElementById(id);
           if (!element) return;
-          element.addEventListener("input", updateStockAiCost);
-          element.addEventListener("change", updateStockAiCost);
+          element.addEventListener("input", onAnalysisInput);
+          element.addEventListener("change", onAnalysisInput);
         });
-        document.getElementById("stock-ai-mode")?.addEventListener("change", syncWebSearchDefaultForMode);
-        document.getElementById("stock-ai-target")?.addEventListener("change", syncWebSearchDefaultForMode);
         syncWebSearchDefaultForMode();
+        state.stockAiInputIdentity = stockAiInputIdentity();
+        syncStockAiExecutionState();
         updateStockAiCost();
       };
 
@@ -3068,12 +3130,12 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
         renderWatchlistAiReview();
         try {
           const payload = await postJson("/portfolio/ai-review", {
-            use_mock_holdings: false,
+            use_mock_holdings: state.data?.mode === "mock",
             holdings: selectedItems.map((item) => ({
               ticker: item.ticker_code,
               name: item.name,
               market: item.market,
-              quantity: 1,
+              quantity: 0,
               average_price: null,
             })),
             analysis_mode: "daily",
@@ -4369,6 +4431,7 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
 
       const loadDashboard = async (tickerCode = null, watchlistId = activeWatchlistId()) => {
         const requestId = ++state.dashboardRequestId;
+        const dataRevision = state.stockAiDataRevision;
         const requestedWatchlistId = watchlistId === null || watchlistId === undefined
           ? null
           : Number(watchlistId);
@@ -4379,14 +4442,17 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
         const data = await fetchJson(`/ui/dashboard/data${query ? `?${query}` : ""}`);
         const activeScopeId = activeWatchlistId();
         if (requestId !== state.dashboardRequestId) return false;
+        if (dataRevision !== state.stockAiDataRevision) return false;
         if (PAGE_MODE === "top" && requestedWatchlistId !== activeScopeId) return false;
         state.data = data;
+        state.stockAiDataSynchronized = true;
         renderAll(data);
         renderPortfolioAiReview();
         renderWatchlistAiReview();
         if (PAGE_MODE === "top") syncWatchlistSelectionToAiTarget();
         updateStockAiCost();
         restoreManualFeedback();
+        syncStockAiExecutionState();
         return true;
       };
 
@@ -4724,7 +4790,7 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
       const selectManagementSpace = async (spaceKey) => {
         const nextSpace = spaceKey || "portfolio";
         if (state.activeManagementSpace !== nextSpace) {
-          invalidateStockAiReview();
+          markStockAiDataUnsynced();
         }
         state.activeManagementSpace = nextSpace;
         closeWatchlistCollectionForm();
@@ -4788,6 +4854,7 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
         try {
           if (mode === "rename" && collection) {
             await patchJson(`/watchlists/${collection.id}`, { name });
+            if (activeWatchlistId() === collection.id) markStockAiDataUnsynced();
             closeWatchlistCollectionForm();
             await loadDashboard(state.data?.selected_ticker_code || null, activeWatchlistId());
             setManagementSpaceFeedback(`「${name}」へ名前を変更しました。`, "success");
@@ -4795,7 +4862,7 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
           }
           const created = await postJson("/watchlists", { name });
           if (state.activeManagementSpace === startingSpace) {
-            invalidateStockAiReview();
+            markStockAiDataUnsynced();
             state.activeManagementSpace = watchlistSpaceKey(created.id);
             const targetInput = document.getElementById("stock-ai-target");
             if (targetInput) targetInput.value = "watchlist";
@@ -4820,7 +4887,7 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
           state.watchlistSelections.delete(collection.id);
           const fallback = (state.data?.watchlist_collections || []).find((item) => item.is_default && item.id !== collection.id);
           if (activeWatchlistId() === collection.id) {
-            invalidateStockAiReview();
+            markStockAiDataUnsynced();
             state.activeManagementSpace = fallback ? watchlistSpaceKey(fallback.id) : "portfolio";
             const targetInput = document.getElementById("stock-ai-target");
             if (targetInput) targetInput.value = fallback ? "watchlist" : "holdings";
@@ -4844,7 +4911,7 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
             name: item.name,
             market: item.market,
           });
-          if (activeWatchlistId() === collection.id) invalidateStockAiReview();
+          if (activeWatchlistId() === collection.id) markStockAiDataUnsynced();
           await loadDashboard(state.data?.selected_ticker_code || null, activeWatchlistId());
           setManagementSpaceFeedback(`「${collection.name}」へ ${item.name} を追加しました。`, "success");
         } catch (error) {
@@ -4860,7 +4927,7 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
           await deleteJson(`/watchlists/${collection.id}/items/${encodeURIComponent(tickerCode)}`);
           const selection = state.watchlistSelections.get(collection.id);
           selection?.delete(tickerCode);
-          if (activeWatchlistId() === collection.id) invalidateStockAiReview();
+          if (activeWatchlistId() === collection.id) markStockAiDataUnsynced();
           await loadDashboard(state.data?.selected_ticker_code || null, activeWatchlistId());
           setManagementSpaceFeedback(`「${collection.name}」から ${publicSecurityCode(tickerCode)} を外しました。`, "success");
         } catch (error) {
@@ -4943,6 +5010,7 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
         }
 
         setPortfolioFeedback("保有銘柄を保存中...");
+        let saved = false;
         try {
           await postJson("/portfolio", {
             ticker_code: tickerCode,
@@ -4950,13 +5018,17 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
             average_cost: averageCost || null,
             note: noteInput.value.trim() || null,
           });
-          setPortfolioFeedback("保有銘柄を保存しました。", "success");
+          saved = true;
+          markStockAiDataUnsynced();
           await loadDashboard(state.data?.selected_ticker_code || null);
+          setPortfolioFeedback("保有銘柄を保存しました。", "success");
           quantityInput.value = "";
           averageCostInput.value = "";
           noteInput.value = "";
         } catch (error) {
-          setPortfolioFeedback(`保有銘柄の保存に失敗しました: ${error.message || String(error)}`, "error");
+          setPortfolioFeedback(saved
+            ? "保有銘柄は保存済みですが、画面の再取得に失敗しました。情報は未同期です。"
+            : `保有銘柄の保存に失敗しました: ${error.message || String(error)}`, "error");
         }
       };
 
@@ -4977,12 +5049,17 @@ def _ui_shell_html(*, page_mode: str, initial_ticker: str | None) -> str:
       const removePortfolioHolding = async (tickerCode) => {
         if (!tickerCode) return;
         setPortfolioFeedback(`${tickerCode} を削除中...`);
+        let removed = false;
         try {
           await deleteJson(`/portfolio/${encodeURIComponent(tickerCode)}`);
-          setPortfolioFeedback(`${tickerCode} を portfolio から外しました。`, "success");
+          removed = true;
+          markStockAiDataUnsynced();
           await loadDashboard(state.data?.selected_ticker_code || null);
+          setPortfolioFeedback(`${tickerCode} を portfolio から外しました。`, "success");
         } catch (error) {
-          setPortfolioFeedback(`削除に失敗しました: ${error.message || String(error)}`, "error");
+          setPortfolioFeedback(removed
+            ? "保有銘柄は削除済みですが、画面の再取得に失敗しました。情報は未同期です。"
+            : `削除に失敗しました: ${error.message || String(error)}`, "error");
         }
       };
 
